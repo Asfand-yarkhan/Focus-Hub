@@ -3,13 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ImageBackground } from
 import { useNavigation } from '@react-navigation/native';
 
 const Welcome = () => {
-  const navigation = useNavigation();
+    const navigation = useNavigation();
 
   return (
     <ImageBackground 
       source={require('../Assets/images/welcome.jpg')}
-      style={styles.backgroundImage}
-      resizeMode="cover"
+        style={styles.backgroundImage}
+        resizeMode="cover"
     >
       <View style={styles.container}>
         <View style={styles.header}>
@@ -18,7 +18,7 @@ const Welcome = () => {
             style={styles.logo}
             resizeMode="contain"
             onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-          />
+      />
           <Text style={styles.title}>Focus Hub</Text>
         </View>
 
@@ -29,7 +29,7 @@ const Welcome = () => {
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
-            style={styles.button}
+            style={styles.button} 
             onPress={() => navigation.navigate('Login')}
           >
             <Text style={styles.buttonText}>Get Started</Text>

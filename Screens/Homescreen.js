@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
+import Icon from 'react-native-vector-icons/FontAwesome';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState('Feed');
+  const [postText, setPostText] = useState('');
 
   // Set Feed as active screen when HomeScreen mounts
   useEffect(() => {
@@ -27,6 +29,14 @@ const HomeScreen = () => {
     }
   };
 
+  const handlePost = () => {
+    if (postText.trim()) {
+      // Here you would typically handle the post submission
+      console.log('Posting:', postText);
+      setPostText(''); // Clear the input after posting
+    }
+  };
+
   return (
     <View style={styles.container}>
       <ImageBackground 
@@ -44,26 +54,79 @@ const HomeScreen = () => {
         </View>
       </ImageBackground>
 
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[styles.navButton, activeScreen === 'Feed' && styles.activeButton]} 
+      {/* Post Creation Section */}
+      <View style={styles.postCreationContainer}>
+        <View style={styles.postInputContainer}>
+          <TextInput
+            style={styles.postInput}
+            placeholder="Share your thoughts..."
+            placeholderTextColor="#666"
+            multiline
+            value={postText}
+            onChangeText={setPostText}
+          />
+        </View>
+        <View style={styles.postActions}>
+          <TouchableOpacity style={styles.postActionButton}>
+            <Icon name="paperclip" size={24} color="#666" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.postActionButton}>
+            <Icon name="image" size={24} color="#666" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.postButton, !postText.trim() && styles.postButtonDisabled]}
+            onPress={handlePost}
+            disabled={!postText.trim()}
+          >
+            <Text style={[styles.postButtonText, !postText.trim() && styles.postButtonTextDisabled]}>
+              Post
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Navigation Buttons */}
+      <View style={styles.navigationContainer}>
+        <TouchableOpacity
+          style={[styles.navButton, activeScreen === 'Feed' && styles.activeNavButton]}
           onPress={() => handleNavigation('Feed')}
         >
-          <Text style={[styles.buttonText, activeScreen === 'Feed' && styles.activeButtonText]}>Feed</Text>
+          <Icon
+            name="home"
+            size={24}
+            color={activeScreen === 'Feed' ? '#007AFF' : '#666'}
+          />
+          <Text style={[styles.navText, activeScreen === 'Feed' && styles.activeNavText]}>
+            Feed
+          </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.navButton, activeScreen === 'Profile' && styles.activeButton]} 
-          onPress={() => handleNavigation('Profile')}
-        >
-          <Text style={[styles.buttonText, activeScreen === 'Profile' && styles.activeButtonText]}>Profile</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.navButton, activeScreen === 'Explore' && styles.activeButton]} 
+        <TouchableOpacity
+          style={[styles.navButton, activeScreen === 'Explore' && styles.activeNavButton]}
           onPress={() => handleNavigation('Explore')}
         >
-          <Text style={[styles.buttonText, activeScreen === 'Explore' && styles.activeButtonText]}>Explore</Text>
+          <Icon
+            name="compass"
+            size={24}
+            color={activeScreen === 'Explore' ? '#007AFF' : '#666'}
+          />
+          <Text style={[styles.navText, activeScreen === 'Explore' && styles.activeNavText]}>
+            Explore
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.navButton, activeScreen === 'Profile' && styles.activeNavButton]}
+          onPress={() => handleNavigation('Profile')}
+        >
+          <Icon
+            name="user"
+            size={24}
+            color={activeScreen === 'Profile' ? '#007AFF' : '#666'}
+          />
+          <Text style={[styles.navText, activeScreen === 'Profile' && styles.activeNavText]}>
+            Profile
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -113,29 +176,75 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 15,
+  postCreationContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
-  navButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  postInputContainer: {
+    marginBottom: 12,
+  },
+  postInput: {
+    height: 40,
+    backgroundColor: '#f8f8f8',
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-  },
-  activeButton: {
-    backgroundColor: '#007AFF',
-  },
-  buttonText: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     fontSize: 16,
-    fontWeight: '600',
     color: '#333',
   },
-  activeButtonText: {
+  postActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  postActionButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  postButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  postButtonDisabled: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  postButtonText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  postButtonTextDisabled: {
+    color: '#666',
+  },
+  navigationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#fff',
+  },
+  navButton: {
+    alignItems: 'center',
+    padding: 8,
+  },
+  activeNavButton: {
+    borderTopWidth: 2,
+    borderTopColor: '#007AFF',
+  },
+  navText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#666',
+  },
+  activeNavText: {
+    color: '#007AFF',
   },
 });
 
