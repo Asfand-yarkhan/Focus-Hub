@@ -14,17 +14,12 @@ import {
   import Backbutton from '../components/Backbutton';
   import {TextInput} from 'react-native';
   import {useNavigation} from '@react-navigation/native';
-  import {useDispatch} from 'react-redux';
-  import {login} from '../store/slices/authSlice';
-  import auth from '@react-native-firebase/auth';
-  import firestore from '@react-native-firebase/firestore';
   
   const LogIn = () => {
     const [email, setemail] = useState('');
     const [Password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const navigation = useNavigation();
-    const dispatch = useDispatch();
   
     const handleSignin = async () => {
       if (!email || !Password) {
@@ -34,42 +29,14 @@ import {
   
       try {
         setLoading(true);
-        // Sign in with Firebase
-        const userCredential = await auth().signInWithEmailAndPassword(email, Password);
+        // TODO: Implement your authentication logic here
+        // For now, we'll just simulate a successful login
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Get additional user data from Firestore
-        const userDoc = await firestore()
-          .collection('users')
-          .doc(userCredential.user.uid)
-          .get();
-  
-        if (!userDoc.exists) {
-          throw new Error('User data not found');
-        }
-  
-        const userData = userDoc.data();
-  
-        // Update Redux state with user data
-        dispatch(login({
-          uid: userCredential.user.uid,
-          email: userData.email,
-          cnic: userData.cnic,
-          phoneNumber: userData.phoneNumber,
-        }));
-  
-        // Navigation will be handled automatically by the App.js conditional rendering
+        // Navigate to the main screen after successful login
+        navigation.navigate('Main');
       } catch (error) {
-        let errorMessage = 'An error occurred during sign in';
-        if (error.code === 'auth/user-not-found') {
-          errorMessage = 'No account found with this email';
-        } else if (error.code === 'auth/wrong-password') {
-          errorMessage = 'Incorrect password';
-        } else if (error.code === 'auth/invalid-email') {
-          errorMessage = 'Invalid email address';
-        } else if (error.message === 'User data not found') {
-          errorMessage = 'User data not found in database';
-        }
-        Alert.alert('Error', errorMessage);
+        Alert.alert('Error', 'An error occurred during sign in');
       } finally {
         setLoading(false);
       }

@@ -9,6 +9,7 @@ import HomeScreen from './Screens/Homescreen';
 import Feed from './Screens/Feed';
 import Profile from './Screens/Profile';
 import Explore from './Screens/Explore';
+import ChatScreen from './Screens/ChatScreen';
 
 // Initialize navigation
 const Stack = createNativeStackNavigator();
@@ -52,6 +53,18 @@ export default function App() {
             name="Explore" 
             component={Explore}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen 
+            name="ChatScreen" 
+            component={ChatScreen}
+            options={{ 
+              headerShown: true,
+              headerTitle: 'Group Chat',
+              headerStyle: {
+                backgroundColor: '#f8f9fa',
+              },
+              headerTintColor: '#3949ab',
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>

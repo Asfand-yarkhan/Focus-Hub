@@ -6,40 +6,48 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 const Explore = () => {
   const navigation = useNavigation();
 
+  const handleGroupPress = (groupName) => {
+    console.log('Navigating to chat with group:', groupName);
+    navigation.navigate('ChatScreen', { groupName });
+  };
+
   const studyGroups = [
     {
       id: '1',
       name: 'Computer Science',
       members: 156,
-      image: 'https://via.placeholder.com/100',
+      image: require('../Assets/images/group.jpeg'),
       description: 'Study group for CS students'
     },
     {
       id: '2',
       name: 'Mathematics',
       members: 89,
-      image: 'https://via.placeholder.com/100',
+      image: require('../Assets/images/group.jpeg'),
       description: 'Advanced mathematics discussion'
     },
     {
       id: '3',
       name: 'Physics',
       members: 120,
-      image: 'https://via.placeholder.com/100',
+      image: require('../Assets/images/group.jpeg'),
       description: 'Physics study group'
     },
     {
       id: '4',
       name: 'Chemistry',
       members: 95,
-      image: 'https://via.placeholder.com/100',
+      image: require('../Assets/images/group.jpeg'),
       description: 'Chemistry enthusiasts'
     }
   ];
 
   const renderGroupItem = ({ item }) => (
-    <TouchableOpacity style={styles.groupCard}>
-      <Image source={{ uri: item.image }} style={styles.groupImage} />
+    <TouchableOpacity 
+      style={styles.groupCard} 
+      onPress={() => handleGroupPress(item.name)}
+    >
+      <Image source={item.image} style={styles.groupImage} />
       <View style={styles.groupInfo}>
         <Text style={styles.groupName}>{item.name}</Text>
         <Text style={styles.groupDescription}>{item.description}</Text>
@@ -89,19 +97,31 @@ const Explore = () => {
       <View style={styles.categoriesContainer}>
         <Text style={styles.sectionTitle}>My Groups</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-          <TouchableOpacity style={styles.categoryButton}>
+          <TouchableOpacity 
+            style={styles.categoryButton}
+            onPress={() => handleGroupPress('Computer Science')}
+          >
             <Icon name="laptop" size={24} color="#007AFF" />
             <Text style={styles.categoryText}>Computer Science</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.categoryButton}>
+          <TouchableOpacity 
+            style={styles.categoryButton}
+            onPress={() => handleGroupPress('Mathematics')}
+          >
             <Icon name="calculator" size={24} color="#007AFF" />
             <Text style={styles.categoryText}>Mathematics</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.categoryButton}>
+          <TouchableOpacity 
+            style={styles.categoryButton}
+            onPress={() => handleGroupPress('Physics')}
+          >
             <Icon name="flask" size={24} color="#007AFF" />
             <Text style={styles.categoryText}>Science</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.categoryButton}>
+          <TouchableOpacity 
+            style={styles.categoryButton}
+            onPress={() => handleGroupPress('Literature')}
+          >
             <Icon name="book" size={24} color="#007AFF" />
             <Text style={styles.categoryText}>Literature</Text>
           </TouchableOpacity>
@@ -236,6 +256,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+    marginBottom: 4,
   },
   groupDescription: {
     fontSize: 14,
