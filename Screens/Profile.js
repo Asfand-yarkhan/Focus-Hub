@@ -8,7 +8,6 @@ const Profile = () => {
 
   const menuItems = [
     { icon: 'user', title: 'Edit Profile', screen: 'EditProfile' },
-    { icon: 'bell', title: 'Notifications', screen: 'Notifications' },
     { icon: 'lock', title: 'Privacy', screen: 'Privacy' },
     { icon: 'question-circle', title: 'Help & Support', screen: 'Support' },
     { icon: 'info-circle', title: 'About', screen: 'About' },

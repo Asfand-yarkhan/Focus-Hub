@@ -10,6 +10,7 @@ import Feed from './Screens/Feed';
 import Profile from './Screens/Profile';
 import Explore from './Screens/Explore';
 import ChatScreen from './Screens/ChatScreen';
+import ForgetPassword from './Screens/ForgetPassword';
 
 // Initialize navigation
 const Stack = createNativeStackNavigator();
@@ -32,6 +33,11 @@ export default function App() {
           <Stack.Screen 
             name="SignUp" 
             component={SignUp}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen 
+            name="ForgetPassword" 
+            component={ForgetPassword}
             options={{ headerShown: false }}
           />
           <Stack.Screen 

@@ -1,14 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, FlatList } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 
 const Explore = () => {
   const navigation = useNavigation();
+  const [joinedGroups, setJoinedGroups] = useState(new Set());
 
   const handleGroupPress = (groupName) => {
-    console.log('Navigating to chat with group:', groupName);
     navigation.navigate('ChatScreen', { groupName });
+  };
+
+  const handleJoinPress = (groupId) => {
+    if (joinedGroups.has(groupId)) {
+      return;
+    }
+    setJoinedGroups(prev => new Set([...prev, groupId]));
   };
 
   const studyGroups = [
@@ -43,10 +50,7 @@ const Explore = () => {
   ];
 
   const renderGroupItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.groupCard} 
-      onPress={() => handleGroupPress(item.name)}
-    >
+    <View style={styles.groupCard}>
       <Image source={item.image} style={styles.groupImage} />
       <View style={styles.groupInfo}>
         <Text style={styles.groupName}>{item.name}</Text>
@@ -56,10 +60,15 @@ const Explore = () => {
           <Text style={styles.memberCount}>{item.members} members</Text>
         </View>
       </View>
-      <TouchableOpacity style={styles.joinButton}>
-        <Text style={styles.joinButtonText}>Join</Text>
+      <TouchableOpacity 
+        style={[styles.joinButton, joinedGroups.has(item.id) && styles.joinButtonRequested]}
+        onPress={() => handleJoinPress(item.id)}
+      >
+        <Text style={[styles.joinButtonText, joinedGroups.has(item.id) && styles.joinButtonTextRequested]}>
+          {joinedGroups.has(item.id) ? 'Requested' : 'Join'}
+        </Text>
       </TouchableOpacity>
-    </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -93,7 +102,7 @@ const Explore = () => {
         </View>
       </View>
 
-      {/* Categories Section */}
+      {/* Categories Section - My Groups (Clickable) */}
       <View style={styles.categoriesContainer}>
         <Text style={styles.sectionTitle}>My Groups</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
@@ -128,7 +137,7 @@ const Explore = () => {
         </ScrollView>
       </View>
 
-      {/* Study Groups Section */}
+      {/* Study Groups Section - Popular Study Groups (Non-clickable) */}
       <View style={styles.groupsContainer}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Popular Study Groups</Text>
@@ -280,10 +289,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignSelf: 'center',
   },
+  joinButtonRequested: {
+    backgroundColor: '#E0E0E0',
+  },
   joinButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  joinButtonTextRequested: {
+    color: '#666',
   },
 });
 

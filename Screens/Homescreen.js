@@ -45,9 +45,14 @@ const HomeScreen = () => {
         resizeMode="cover"
       >
         <View style={styles.headerContent}>
-          <TouchableOpacity style={styles.inviteButton}>
-            <Text style={styles.inviteButtonText}>Invite Friends</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity style={styles.inviteButton}>
+              <Text style={styles.inviteButtonText}>Invite Friends</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.notificationButton}>
+              <Icon name="bell" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Hey Asfand!</Text>
           </View>
@@ -150,6 +155,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 20,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  inviteButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  notificationButton: {
+    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   titleContainer: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -162,14 +188,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 5
-  },
-  inviteButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    alignSelf: 'flex-end',
-    marginBottom: 10,
   },
   inviteButtonText: {
     color: '#fff',
