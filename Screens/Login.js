@@ -9,7 +9,8 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   ScrollView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ForgetPassword from './ForgetPassword';
@@ -18,6 +19,42 @@ const Login = () => {
   const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleLogin = () => {
+    // Reset errors
+    setEmailError('');
+    setPasswordError('');
+
+    // Validate email
+    if (!email) {
+      setEmailError('Email is required');
+      return;
+    }
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    // Validate password
+    if (!password) {
+      setPasswordError('Password is required');
+      return;
+    }
+    if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+
+    // If validation passes, proceed with login
+    navigation.navigate('Home');
+  };
 
   const handleForgotPassword = () => {
     navigation.navigate('ForgetPassword');
@@ -51,26 +88,34 @@ const Login = () => {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, emailError ? styles.inputError : null]}
                 placeholder="Enter your email"
                 placeholderTextColor="#666"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  setEmailError('');
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
+              {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordError ? styles.inputError : null]}
                 placeholder="Enter your password"
                 placeholderTextColor="#666"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setPasswordError('');
+                }}
                 secureTextEntry
               />
+              {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
             </View>
 
             <TouchableOpacity 
@@ -82,7 +127,7 @@ const Login = () => {
 
             <TouchableOpacity 
               style={styles.loginButton}
-              onPress={() => navigation.navigate('Home')}
+              onPress={handleLogin}
             >
               <Text style={styles.buttonText}>Login</Text>
             </TouchableOpacity>
@@ -188,6 +233,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  inputError: {
+    borderColor: '#FF3B30',
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
 });
 

@@ -17,11 +17,25 @@ import {
   const ForgetPassword = () => {
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
+    const [emailError, setEmailError] = useState('');
     const navigation = useNavigation();
   
+    const validateEmail = (email) => {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(email);
+    };
+  
     const handleResetPassword = async () => {
+      // Reset error
+      setEmailError('');
+
+      // Validate email
       if (!email) {
-        Alert.alert('Error', 'Please enter your email address');
+        setEmailError('Email is required');
+        return;
+      }
+      if (!validateEmail(email)) {
+        setEmailError('Please enter a valid email address');
         return;
       }
   
@@ -73,14 +87,18 @@ import {
             <Text style={styles.label}>Email</Text>
             <TextInput
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(text) => {
+                setEmail(text);
+                setEmailError('');
+              }}
               placeholder="Enter your email"
               placeholderTextColor="#666"
-              style={styles.input}
+              style={[styles.input, emailError ? styles.inputError : null]}
               editable={!loading}
               autoCapitalize="none"
               keyboardType="email-address"
             />
+            {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
   
             <TouchableOpacity 
               style={[styles.button, loading && styles.buttonDisabled]} 
@@ -150,6 +168,16 @@ import {
       fontSize: 16,
       borderWidth: 1,
       borderColor: '#e0e0e0',
+    },
+    inputError: {
+      borderColor: '#FF3B30',
+    },
+    errorText: {
+      color: '#FF3B30',
+      fontSize: 12,
+      marginTop: -15,
+      marginBottom: 15,
+      marginLeft: 4,
     },
     button: {
       backgroundColor: '#3949ab',

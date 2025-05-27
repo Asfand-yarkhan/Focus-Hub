@@ -9,7 +9,8 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   ScrollView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
@@ -18,6 +19,67 @@ const SignUp = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSignUp = () => {
+    // Reset errors
+    setNameError('');
+    setEmailError('');
+    setPasswordError('');
+    setConfirmPasswordError('');
+
+    // Validate name
+    if (!name) {
+      setNameError('Name is required');
+      return;
+    }
+    if (name.length < 2) {
+      setNameError('Name must be at least 2 characters');
+      return;
+    }
+
+    // Validate email
+    if (!email) {
+      setEmailError('Email is required');
+      return;
+    }
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    // Validate password
+    if (!password) {
+      setPasswordError('Password is required');
+      return;
+    }
+    if (password.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+
+    // Validate confirm password
+    if (!confirmPassword) {
+      setConfirmPasswordError('Please confirm your password');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setConfirmPasswordError('Passwords do not match');
+      return;
+    }
+
+    // If validation passes, proceed with signup
+    navigation.navigate('Home');
+  };
 
   return (
     <ImageBackground 
@@ -47,42 +109,70 @@ const SignUp = () => {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Full Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, nameError ? styles.inputError : null]}
                 placeholder="Enter your full name"
                 placeholderTextColor="#666"
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => {
+                  setName(text);
+                  setNameError('');
+                }}
               />
+              {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, emailError ? styles.inputError : null]}
                 placeholder="Enter your email"
                 placeholderTextColor="#666"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  setEmailError('');
+                }}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
+              {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordError ? styles.inputError : null]}
                 placeholder="Enter your password"
                 placeholderTextColor="#666"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setPasswordError('');
+                }}
                 secureTextEntry
               />
+              {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Confirm Password</Text>
+              <TextInput
+                style={[styles.input, confirmPasswordError ? styles.inputError : null]}
+                placeholder="Confirm your password"
+                placeholderTextColor="#666"
+                value={confirmPassword}
+                onChangeText={(text) => {
+                  setConfirmPassword(text);
+                  setConfirmPasswordError('');
+                }}
+                secureTextEntry
+              />
+              {confirmPasswordError ? <Text style={styles.errorText}>{confirmPasswordError}</Text> : null}
             </View>
 
             <TouchableOpacity 
               style={styles.signupButton}
-              onPress={() => navigation.navigate('Home')}
+              onPress={handleSignUp}
             >
               <Text style={styles.buttonText}>Sign Up</Text>
             </TouchableOpacity>
@@ -177,6 +267,15 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  inputError: {
+    borderColor: '#FF3B30',
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
 });
 

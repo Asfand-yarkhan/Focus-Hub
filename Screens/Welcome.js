@@ -14,11 +14,11 @@ const Welcome = () => {
       <View style={styles.container}>
         <View style={styles.header}>
           <Image 
-            source={require('../Assets/images/header.png')} 
+            source={require('../Assets/images/header.png')}
             style={styles.logo}
             resizeMode="contain"
             onError={(e) => console.log('Image loading error:', e.nativeEvent.error)}
-      />
+          />
           <Text style={styles.title}>Focus Hub</Text>
         </View>
 

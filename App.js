@@ -2,6 +2,9 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import firebase from '@react-native-firebase/app';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import Welcome from './Screens/Welcome';
 import Login from './Screens/Login';
 import SignUp from './Screens/SignUp';
@@ -11,6 +14,13 @@ import Profile from './Screens/Profile';
 import Explore from './Screens/Explore';
 import ChatScreen from './Screens/ChatScreen';
 import ForgetPassword from './Screens/ForgetPassword';
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+  firebase.initializeApp({
+    // Your Firebase config will be automatically picked up from google-services.json
+  });
+}
 
 // Initialize navigation
 const Stack = createNativeStackNavigator();

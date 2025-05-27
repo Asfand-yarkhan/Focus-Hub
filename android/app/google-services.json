@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "188699792715",
+    "project_id": "focus-hub-b58fe",
+    "storage_bucket": "focus-hub-b58fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:188699792715:android:a31a5361d94d289a9a44ce",
+        "android_client_info": {
+          "package_name": "com.focushub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDyv5IAhdqGJ3YlmSFEUg70CishwhM8N-4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
