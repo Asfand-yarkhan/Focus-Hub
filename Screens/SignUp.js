@@ -13,6 +13,8 @@ import {
   Alert
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { getAuth, createUserWithEmailAndPassword } from '@react-native-firebase/auth';
+import { updateProfile } from '@react-native-firebase/auth';
 
 const SignUp = () => {
   const navigation = useNavigation();
@@ -30,7 +32,7 @@ const SignUp = () => {
     return emailRegex.test(email);
   };
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     // Reset errors
     setNameError('');
     setEmailError('');
@@ -76,9 +78,26 @@ const SignUp = () => {
       setConfirmPasswordError('Passwords do not match');
       return;
     }
+    // If all validations pass, proceed with sign up
+    try{
+      const authInstance = getAuth();
+      const isUserCreated = await createUserWithEmailAndPassword(authInstance, email , password);
+      if(isUserCreated.user){
+        await isUserCreated.user.updateProfile({
+          displayName: name,
+        });
+        Alert.alert('Success', 'User created successfully');}
+    }catch(error){
+      Alert.alert('Error', error.message);
+    }
 
     // If validation passes, proceed with signup
     navigation.navigate('Home');
+    setName('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+
   };
 
   return (

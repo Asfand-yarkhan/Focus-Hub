@@ -3,11 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, I
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import auth from '@react-native-firebase/auth';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState('Feed');
   const [postText, setPostText] = useState('');
+  const [currentUserState, setCurrentUserState] = useState(null);
+
+  // Listen for authentication state changes
+  useEffect(() => {
+    const subscriber = auth().onAuthStateChanged(user => {
+      setCurrentUserState(user);
+    });
+    return subscriber; // unsubscribe on unmount
+  }, []);
 
   // Set Feed as active screen when HomeScreen mounts
   useEffect(() => {
@@ -54,7 +64,7 @@ const HomeScreen = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>Hey Asfand!</Text>
+            <Text style={styles.title}>{currentUserState?.displayName}</Text>
           </View>
         </View>
       </ImageBackground>

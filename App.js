@@ -15,13 +15,6 @@ import Explore from './Screens/Explore';
 import ChatScreen from './Screens/ChatScreen';
 import ForgetPassword from './Screens/ForgetPassword';
 
-// Initialize Firebase
-if (!firebase.apps.length) {
-  firebase.initializeApp({
-    // Your Firebase config will be automatically picked up from google-services.json
-  });
-}
-
 // Initialize navigation
 const Stack = createNativeStackNavigator();
 

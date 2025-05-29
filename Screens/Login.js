@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import ForgetPassword from './ForgetPassword';
+import { getAuth , signInWithEmailAndPassword } from '@react-native-firebase/auth';
 
 const Login = () => {
   const navigation = useNavigation();
@@ -27,7 +28,7 @@ const Login = () => {
     return emailRegex.test(email);
   };
 
-  const handleLogin = () => {
+  const handleLogin =async () => {
     // Reset errors
     setEmailError('');
     setPasswordError('');
@@ -47,13 +48,28 @@ const Login = () => {
       setPasswordError('Password is required');
       return;
     }
-    if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
-    }
-
-    // If validation passes, proceed with login
+    try {
+      const auth = getAuth();
+      const userCredentials = await signInWithEmailAndPassword(auth, email, password);
+      if( userCredentials.user) {
+        // If validation passes, proceed with login
     navigation.navigate('Home');
+      }
+    } catch (error) {
+    if (error.code === 'auth/invalid-email') {
+      setEmailError('Invalid email format');
+      Alert.alert('Login Failed', 'Invalid email format');
+    } else if (error.code === 'auth/user-not-found') {
+      setEmailError('No user found with this email');
+      Alert.alert('Login Failed', 'No user found with this email.');
+    } else if (error.code === 'auth/wrong-password') {
+      setPasswordError('Incorrect password');
+      Alert.alert('Login Failed', 'Incorrect password.');
+    } else {
+      Alert.alert('Login Failed', error.message); // for unexpected errors
+    }
+  }
+    
   };
 
   const handleForgotPassword = () => {
