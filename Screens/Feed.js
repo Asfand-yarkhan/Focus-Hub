@@ -1,67 +1,87 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
+import { firestore } from '../firebase/config';
 
 const Feed = () => {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Subscribe to posts collection
+    const subscriber = firestore()
+      .collection('posts')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(querySnapshot => {
+        const postsData = [];
+        querySnapshot.forEach(doc => {
+          const data = doc.data();
+          postsData.push({
+            id: doc.id,
+            content: data.content || '',
+            userId: data.userId || '',
+            userName: data.userName || 'User',
+            userProfilePicture: data.userProfilePicture || null,
+            userGender: data.userGender || 'male',
+            createdAt: data.createdAt || new Date(),
+            likes: data.likes || 0,
+            comments: data.comments || []
+          });
+        });
+        setPosts(postsData);
+        setLoading(false);
+      }, error => {
+        console.error('Error fetching posts:', error);
+        Alert.alert('Error', 'Failed to load posts');
+        setLoading(false);
+      });
+
+    return () => subscriber();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.feedContainer}>
-      {/* Sample Feed Items */}
-      <View style={styles.feedItem}>
-        <View style={styles.feedHeader}>
-          <ImageBackground 
-            source={require('../Assets/images/welcome.jpg')}
-            style={styles.feedUserImage}
-          >
-            <View style={styles.feedUserImageOverlay} />
-          </ImageBackground>
-          <View style={styles.feedUserInfo}>
-            <Text style={styles.feedUserName}>John Doe</Text>
-            <Text style={styles.feedTime}>2 hours ago</Text>
+      {posts.map(post => (
+        <View key={post.id} style={styles.feedItem}>
+          <View style={styles.feedHeader}>
+            <Image
+              source={
+                post.userProfilePicture
+                  ? { uri: post.userProfilePicture }
+                  : post.userGender === 'female'
+                  ? require('../Assets/images/female.jpg')
+                  : require('../Assets/images/male.jpg')
+              }
+              style={styles.feedUserImage}
+            />
+            <View style={styles.feedUserInfo}>
+              <Text style={styles.feedUserName}>{post.userName}</Text>
+              <Text style={styles.feedTime}>
+                {post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : 'Just now'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.feedContent}>{post.content}</Text>
+          <View style={styles.feedActions}>
+            <TouchableOpacity style={styles.feedActionButton}>
+              <Text style={styles.feedActionText}>Like ({post.likes})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.feedActionButton}>
+              <Text style={styles.feedActionText}>Comment ({post.comments.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.feedActionButton}>
+              <Text style={styles.feedActionText}>Share</Text>
+            </TouchableOpacity>
           </View>
         </View>
-        <Text style={styles.feedContent}>
-          Just completed a 2-hour study session! Feeling productive and motivated. #StudyGoals
-        </Text>
-        <View style={styles.feedActions}>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Like</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Comment</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Share</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.feedItem}>
-        <View style={styles.feedHeader}>
-          <ImageBackground 
-            source={require('../Assets/images/welcome.jpg')}
-            style={styles.feedUserImage}
-          >
-            <View style={styles.feedUserImageOverlay} />
-          </ImageBackground>
-          <View style={styles.feedUserInfo}>
-            <Text style={styles.feedUserName}>Jane Smith</Text>
-            <Text style={styles.feedTime}>4 hours ago</Text>
-          </View>
-        </View>
-        <Text style={styles.feedContent}>
-          Working on my final project. The deadline is approaching but I'm making good progress! 💪
-        </Text>
-        <View style={styles.feedActions}>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Like</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Comment</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.feedActionButton}>
-            <Text style={styles.feedActionText}>Share</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      ))}
     </ScrollView>
   );
 };
@@ -133,6 +153,12 @@ const styles = StyleSheet.create({
   feedActionText: {
     color: '#666',
     fontSize: 14,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
 });
 

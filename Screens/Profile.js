@@ -1,10 +1,23 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import auth from '@react-native-firebase/auth';
 
 const Profile = () => {
   const navigation = useNavigation();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const currentUser = auth().currentUser;
+    if (currentUser) {
+      setUser({
+        name: currentUser.displayName || 'User',
+        email: currentUser.email,
+        photoURL: currentUser.photoURL || 'https://via.placeholder.com/100'
+      });
+    }
+  }, []);
 
   const menuItems = [
     { icon: 'user', title: 'Edit Profile', screen: 'EditProfile' },
@@ -12,6 +25,23 @@ const Profile = () => {
     { icon: 'question-circle', title: 'Help & Support', screen: 'Support' },
     { icon: 'info-circle', title: 'About', screen: 'About' },
   ];
+
+  const handleLogout = async () => {
+    try {
+      await auth().signOut();
+      navigation.navigate('Login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -29,12 +59,14 @@ const Profile = () => {
       {/* Profile Section */}
       <View style={styles.profileSection}>
         <Image
-          source={{ uri: 'https://via.placeholder.com/100' }}
+          source={{ uri: user.photoURL }}
           style={styles.profileImage}
         />
-        <Text style={styles.userName}>John Doe</Text>
-        <Text style={styles.userEmail}>john.doe@example.com</Text>
-        <TouchableOpacity style={styles.editProfileButton}>
+        <Text style={styles.userName}>{user.name}</Text>
+        <Text style={styles.userEmail}>{user.email}</Text>
+        <TouchableOpacity 
+          style={styles.editProfileButton}
+          onPress={() => navigation.navigate('EditProfile', { user })}>
           <Text style={styles.editProfileText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
@@ -57,8 +89,9 @@ const Profile = () => {
       </View>
 
       {/* Logout Button */}
-      <TouchableOpacity style={styles.logoutButton} 
-      onPress={() => navigation.navigate('Login')}>
+      <TouchableOpacity 
+        style={styles.logoutButton} 
+        onPress={handleLogout}>
         <Icon name="sign-out" size={24} color="#FF3B30" />
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>

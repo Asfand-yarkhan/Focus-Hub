@@ -10,7 +10,8 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Platform,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { getAuth, createUserWithEmailAndPassword } from '@react-native-firebase/auth';
@@ -22,10 +23,19 @@ const SignUp = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [university, setUniversity] = useState('');
+  const [degree, setDegree] = useState('');
+  const [semester, setSemester] = useState('');
+  
   const [nameError, setNameError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  const [dateOfBirthError, setDateOfBirthError] = useState('');
+  const [universityError, setUniversityError] = useState('');
+  const [degreeError, setDegreeError] = useState('');
+  const [semesterError, setSemesterError] = useState('');
 
   const validateEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,6 +48,10 @@ const SignUp = () => {
     setEmailError('');
     setPasswordError('');
     setConfirmPasswordError('');
+    setDateOfBirthError('');
+    setUniversityError('');
+    setDegreeError('');
+    setSemesterError('');
 
     // Validate name
     if (!name) {
@@ -78,16 +92,42 @@ const SignUp = () => {
       setConfirmPasswordError('Passwords do not match');
       return;
     }
+
+    // Validate date of birth
+    if (!dateOfBirth) {
+      setDateOfBirthError('Date of birth is required');
+      return;
+    }
+
+    // Validate university
+    if (!university) {
+      setUniversityError('University name is required');
+      return;
+    }
+
+    // Validate degree
+    if (!degree) {
+      setDegreeError('Degree is required');
+      return;
+    }
+
+    // Validate semester
+    if (!semester) {
+      setSemesterError('Semester is required');
+      return;
+    }
+
     // If all validations pass, proceed with sign up
-    try{
+    try {
       const authInstance = getAuth();
-      const isUserCreated = await createUserWithEmailAndPassword(authInstance, email , password);
-      if(isUserCreated.user){
+      const isUserCreated = await createUserWithEmailAndPassword(authInstance, email, password);
+      if (isUserCreated.user) {
         await isUserCreated.user.updateProfile({
           displayName: name,
         });
-        Alert.alert('Success', 'User created successfully');}
-    }catch(error){
+        Alert.alert('Success', 'User created successfully');
+      }
+    } catch (error) {
       Alert.alert('Error', error.message);
     }
 
@@ -97,7 +137,10 @@ const SignUp = () => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
-
+    setDateOfBirth('');
+    setUniversity('');
+    setDegree('');
+    setSemester('');
   };
 
   return (
@@ -187,6 +230,67 @@ const SignUp = () => {
                 secureTextEntry
               />
               {confirmPasswordError ? <Text style={styles.errorText}>{confirmPasswordError}</Text> : null}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Date of Birth</Text>
+              <TextInput
+                style={[styles.input, dateOfBirthError ? styles.inputError : null]}
+                placeholder="DD/MM/YYYY"
+                placeholderTextColor="#666"
+                value={dateOfBirth}
+                onChangeText={(text) => {
+                  setDateOfBirth(text);
+                  setDateOfBirthError('');
+                }}
+              />
+              {dateOfBirthError ? <Text style={styles.errorText}>{dateOfBirthError}</Text> : null}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>University Name</Text>
+              <TextInput
+                style={[styles.input, universityError ? styles.inputError : null]}
+                placeholder="Enter your university name"
+                placeholderTextColor="#666"
+                value={university}
+                onChangeText={(text) => {
+                  setUniversity(text);
+                  setUniversityError('');
+                }}
+              />
+              {universityError ? <Text style={styles.errorText}>{universityError}</Text> : null}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Degree</Text>
+              <TextInput
+                style={[styles.input, degreeError ? styles.inputError : null]}
+                placeholder="Enter your degree"
+                placeholderTextColor="#666"
+                value={degree}
+                onChangeText={(text) => {
+                  setDegree(text);
+                  setDegreeError('');
+                }}
+              />
+              {degreeError ? <Text style={styles.errorText}>{degreeError}</Text> : null}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Semester</Text>
+              <TextInput
+                style={[styles.input, semesterError ? styles.inputError : null]}
+                placeholder="Enter your current semester"
+                placeholderTextColor="#666"
+                value={semester}
+                onChangeText={(text) => {
+                  setSemester(text);
+                  setSemesterError('');
+                }}
+                keyboardType="numeric"
+              />
+              {semesterError ? <Text style={styles.errorText}>{semesterError}</Text> : null}
             </View>
 
             <TouchableOpacity 
@@ -295,6 +399,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
     marginLeft: 4,
+  },
+  placeholderText: {
+    color: '#666',
+    fontSize: 16,
+  },
+  dateText: {
+    color: '#000',
+    fontSize: 16,
   },
 });
 

@@ -1,22 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import auth from '@react-native-firebase/auth';
+import { auth, firestore } from '../firebase/config';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState('Feed');
   const [postText, setPostText] = useState('');
   const [currentUserState, setCurrentUserState] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   // Listen for authentication state changes
   useEffect(() => {
     const subscriber = auth().onAuthStateChanged(user => {
       setCurrentUserState(user);
+      if (user) {
+        // Fetch user profile data
+        const unsubscribe = firestore()
+          .collection('users')
+          .doc(user.uid)
+          .onSnapshot(doc => {
+            if (doc && doc.exists) {
+              setUserProfile(doc.data());
+            } else {
+              // Set default profile if none exists
+              setUserProfile({
+                name: user.displayName || 'User',
+                gender: 'male',
+                profilePicture: null
+              });
+            }
+          });
+        return unsubscribe;
+      }
     });
-    return subscriber; // unsubscribe on unmount
+    return subscriber;
   }, []);
 
   // Set Feed as active screen when HomeScreen mounts
@@ -33,17 +53,37 @@ const HomeScreen = () => {
 
   const handleNavigation = (screenName) => {
     setActiveScreen(screenName);
-    // Only navigate if it's not Feed
-    if (screenName !== 'Feed') {
-      navigation.navigate(screenName);
+    if (screenName === 'Feed') {
+      // If it's Feed, just update the active screen
+      return;
     }
+    // For other screens, navigate to them
+    navigation.navigate(screenName);
   };
 
-  const handlePost = () => {
-    if (postText.trim()) {
-      // Here you would typically handle the post submission
-      console.log('Posting:', postText);
+  const handlePost = async () => {
+    if (!postText.trim() || !currentUserState) return;
+
+    try {
+      const postData = {
+        content: postText.trim(),
+        userId: currentUserState.uid,
+        userName: currentUserState.displayName || userProfile?.name || 'User',
+        userProfilePicture: userProfile?.profilePicture || null,
+        userGender: userProfile?.gender || 'male',
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        likes: 0,
+        comments: []
+      };
+
+      await firestore()
+        .collection('posts')
+        .add(postData);
+
       setPostText(''); // Clear the input after posting
+    } catch (error) {
+      console.error('Error creating post:', error);
+      Alert.alert('Error', 'Failed to create post. Please try again.');
     }
   };
 
@@ -72,14 +112,26 @@ const HomeScreen = () => {
       {/* Post Creation Section */}
       <View style={styles.postCreationContainer}>
         <View style={styles.postInputContainer}>
-          <TextInput
-            style={styles.postInput}
-            placeholder="Share your thoughts..."
-            placeholderTextColor="#666"
-            multiline
-            value={postText}
-            onChangeText={setPostText}
-          />
+          <View style={styles.postHeader}>
+            <Image
+              source={
+                userProfile?.profilePicture
+                  ? { uri: userProfile.profilePicture }
+                  : userProfile?.gender === 'female'
+                  ? require('../Assets/images/female.jpg')
+                  : require('../Assets/images/male.jpg')
+              }
+              style={styles.postUserImage}
+            />
+            <TextInput
+              style={styles.postInput}
+              placeholder="Share your thoughts..."
+              placeholderTextColor="#666"
+              multiline
+              value={postText}
+              onChangeText={setPostText}
+            />
+          </View>
         </View>
         <View style={styles.postActions}>
           <TouchableOpacity style={styles.postActionButton}>
@@ -145,7 +197,7 @@ const HomeScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <Feed />
+      {activeScreen === 'Feed' && <Feed />}
     </View>
   );
 };
@@ -213,7 +265,19 @@ const styles = StyleSheet.create({
   postInputContainer: {
     marginBottom: 12,
   },
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  postUserImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
   postInput: {
+    flex: 1,
     height: 40,
     backgroundColor: '#f8f8f8',
     borderRadius: 20,

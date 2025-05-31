@@ -14,6 +14,7 @@ import Profile from './Screens/Profile';
 import Explore from './Screens/Explore';
 import ChatScreen from './Screens/ChatScreen';
 import ForgetPassword from './Screens/ForgetPassword';
+import EditProfile from './Screens/EditProfile';
 
 // Initialize navigation
 const Stack = createNativeStackNavigator();
@@ -56,6 +57,11 @@ export default function App() {
           <Stack.Screen 
             name="Profile" 
             component={Profile}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen 
+            name="EditProfile" 
+            component={EditProfile}
             options={{ headerShown: false }}
           />
           <Stack.Screen 
