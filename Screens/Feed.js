@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
 import { firestore } from '../firebase/config';
+import auth from '@react-native-firebase/auth';
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check if user is authenticated
+    const currentUser = auth().currentUser;
+    if (!currentUser) {
+      Alert.alert('Error', 'Please log in to view posts');
+      setLoading(false);
+      return;
+    }
+
     // Subscribe to posts collection
     const subscriber = firestore()
       .collection('posts')
@@ -31,7 +40,12 @@ const Feed = () => {
         setLoading(false);
       }, error => {
         console.error('Error fetching posts:', error);
-        Alert.alert('Error', 'Failed to load posts');
+        // More detailed error message
+        if (error.code === 'permission-denied') {
+          Alert.alert('Error', 'You do not have permission to view posts. Please make sure you are logged in.');
+        } else {
+          Alert.alert('Error', `Failed to load posts: ${error.message}`);
+        }
         setLoading(false);
       });
 
@@ -64,7 +78,9 @@ const Feed = () => {
             <View style={styles.feedUserInfo}>
               <Text style={styles.feedUserName}>{post.userName}</Text>
               <Text style={styles.feedTime}>
-                {post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : 'Just now'}
+                {post.createdAt && typeof post.createdAt.toDate === 'function'
+                  ? new Date(post.createdAt.toDate()).toLocaleString()
+                  : 'Just now'}
               </Text>
             </View>
           </View>

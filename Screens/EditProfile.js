@@ -16,7 +16,7 @@ import { auth, firestore } from '../firebase/config';
 
 const EditProfile = () => {
   const navigation = useNavigation();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [gender, setGender] = useState('male');
   const [profileImage, setProfileImage] = useState(null);
   
@@ -33,14 +33,14 @@ const EditProfile = () => {
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const currentUser = auth.currentUser;
+        const currentUser = auth().currentUser;
         if (!currentUser) {
           Alert.alert('Error', 'Please log in to continue');
-          navigation.goBack();
+          navigation.navigate('Login');
           return;
         }
 
-        const userDoc = await firestore
+        const userDoc = await firestore()
           .collection('users')
           .doc(currentUser.uid)
           .get();
@@ -57,9 +57,11 @@ const EditProfile = () => {
           setSemester(userData.semester || '');
           setProfileImage(userData.profilePicture || null);
         }
+        setLoading(false);
       } catch (error) {
         console.error('Error loading profile:', error);
         Alert.alert('Error', 'Failed to load profile data');
+        setLoading(false);
       }
     };
 
@@ -79,9 +81,11 @@ const EditProfile = () => {
 
     setLoading(true);
     try {
-      const currentUser = auth.currentUser;
+      const currentUser = auth().currentUser;
       if (!currentUser) {
-        throw new Error('Please log in to continue');
+        Alert.alert('Error', 'Please log in to continue');
+        navigation.navigate('Login');
+        return;
       }
 
       const userData = {
@@ -98,7 +102,7 @@ const EditProfile = () => {
       };
 
       // Save to Firestore
-      await firestore
+      await firestore()
         .collection('users')
         .doc(currentUser.uid)
         .set(userData, { merge: true });
@@ -120,6 +124,14 @@ const EditProfile = () => {
       setLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -388,6 +400,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

@@ -3,7 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, I
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { auth, firestore } from '../firebase/config';
+// Import modular functions
+import { getAuth, onAuthStateChanged } from '@react-native-firebase/auth';
+import { getFirestore, collection, doc, onSnapshot, addDoc, serverTimestamp } from '@react-native-firebase/firestore';
+import { firestore } from '../firebase/config';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -12,31 +15,31 @@ const HomeScreen = () => {
   const [currentUserState, setCurrentUserState] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
 
+  const db = getFirestore();
+  const auth = getAuth();
+
   // Listen for authentication state changes
   useEffect(() => {
-    const subscriber = auth().onAuthStateChanged(user => {
+    const subscriber = onAuthStateChanged(auth, user => {
       setCurrentUserState(user);
       if (user) {
         // Fetch user profile data
-        const unsubscribe = firestore()
-          .collection('users')
-          .doc(user.uid)
-          .onSnapshot(doc => {
-            if (doc && doc.exists) {
-              setUserProfile(doc.data());
-            } else {
-              // Set default profile if none exists
-              setUserProfile({
-                name: user.displayName || 'User',
-                gender: 'male',
-                profilePicture: null
-              });
-            }
-          });
+        const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+          if (doc.exists()) {
+            setUserProfile(doc.data());
+          } else {
+            // Set default profile if none exists
+            setUserProfile({
+              name: user.displayName || 'User',
+              gender: 'male',
+              profilePicture: null
+            });
+          }
+        });
         return unsubscribe;
       }
     });
-    return subscriber;
+    return subscriber; // unsubscribe on unmount
   }, []);
 
   // Set Feed as active screen when HomeScreen mounts
@@ -71,14 +74,12 @@ const HomeScreen = () => {
         userName: currentUserState.displayName || userProfile?.name || 'User',
         userProfilePicture: userProfile?.profilePicture || null,
         userGender: userProfile?.gender || 'male',
-        createdAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
         likes: 0,
         comments: []
       };
 
-      await firestore()
-        .collection('posts')
-        .add(postData);
+      await addDoc(collection(db, 'posts'), postData);
 
       setPostText(''); // Clear the input after posting
     } catch (error) {

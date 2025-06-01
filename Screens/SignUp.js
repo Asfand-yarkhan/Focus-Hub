@@ -14,8 +14,8 @@ import {
   Modal
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { getAuth, createUserWithEmailAndPassword } from '@react-native-firebase/auth';
-import { updateProfile } from '@react-native-firebase/auth';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 
 const SignUp = () => {
   const navigation = useNavigation();
@@ -43,7 +43,7 @@ const SignUp = () => {
   };
 
   const handleSignUp = async () => {
-    // Reset errors
+    // Reset all errors
     setNameError('');
     setEmailError('');
     setPasswordError('');
@@ -53,17 +53,12 @@ const SignUp = () => {
     setDegreeError('');
     setSemesterError('');
 
-    // Validate name
-    if (!name) {
+    // Validate all fields
+    if (!name.trim()) {
       setNameError('Name is required');
       return;
     }
-    if (name.length < 2) {
-      setNameError('Name must be at least 2 characters');
-      return;
-    }
 
-    // Validate email
     if (!email) {
       setEmailError('Email is required');
       return;
@@ -73,7 +68,6 @@ const SignUp = () => {
       return;
     }
 
-    // Validate password
     if (!password) {
       setPasswordError('Password is required');
       return;
@@ -83,64 +77,47 @@ const SignUp = () => {
       return;
     }
 
-    // Validate confirm password
-    if (!confirmPassword) {
-      setConfirmPasswordError('Please confirm your password');
-      return;
-    }
     if (password !== confirmPassword) {
       setConfirmPasswordError('Passwords do not match');
       return;
     }
 
-    // Validate date of birth
-    if (!dateOfBirth) {
-      setDateOfBirthError('Date of birth is required');
-      return;
-    }
-
-    // Validate university
-    if (!university) {
-      setUniversityError('University name is required');
-      return;
-    }
-
-    // Validate degree
-    if (!degree) {
-      setDegreeError('Degree is required');
-      return;
-    }
-
-    // Validate semester
-    if (!semester) {
-      setSemesterError('Semester is required');
-      return;
-    }
-
-    // If all validations pass, proceed with sign up
     try {
-      const authInstance = getAuth();
-      const isUserCreated = await createUserWithEmailAndPassword(authInstance, email, password);
-      if (isUserCreated.user) {
-        await isUserCreated.user.updateProfile({
-          displayName: name,
-        });
-        Alert.alert('Success', 'User created successfully');
-      }
-    } catch (error) {
-      Alert.alert('Error', error.message);
-    }
+      // Create user with email and password
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      
+      // Update user profile with name
+      await userCredential.user.updateProfile({
+        displayName: name
+      });
 
-    // If validation passes, proceed with signup
-    navigation.navigate('Home');
-    setName('');
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setDateOfBirth('');
-    setUniversity('');
-    setDegree('');
-    setSemester('');
+      // Create user document in Firestore
+      await firestore().collection('users').doc(userCredential.user.uid).set({
+        name: name,
+        email: email,
+        dateOfBirth: dateOfBirth || '',
+        university: university || '',
+        degree: degree || '',
+        semester: semester || '',
+        createdAt: firestore.FieldValue.serverTimestamp()
+      });
+
+      Alert.alert('Success', 'Account created successfully!');
+      navigation.navigate('Home');
+    } catch (error) {
+      if (error.code === 'auth/email-already-in-use') {
+        setEmailError('Email is already registered');
+        Alert.alert('Sign Up Failed', 'This email is already registered.');
+      } else if (error.code === 'auth/invalid-email') {
+        setEmailError('Invalid email format');
+        Alert.alert('Sign Up Failed', 'Invalid email format.');
+      } else if (error.code === 'auth/weak-password') {
+        setPasswordError('Password is too weak');
+        Alert.alert('Sign Up Failed', 'Password is too weak.');
+      } else {
+        Alert.alert('Sign Up Failed', error.message);
+      }
+    }
   };
 
   return (
