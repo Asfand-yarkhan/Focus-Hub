@@ -1,56 +1,168 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
-import { firestore } from '../firebase/config';
-import auth from '@react-native-firebase/auth';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal } from 'react-native';
+import { auth, db } from '../firebase/config';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where } from 'firebase/firestore';
+import { onAuthStateChanged, getAuth } from 'firebase/auth';
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   useEffect(() => {
-    // Check if user is authenticated
-    const currentUser = auth().currentUser;
-    if (!currentUser) {
-      Alert.alert('Error', 'Please log in to view posts');
-      setLoading(false);
-      return;
-    }
-
-    // Subscribe to posts collection
-    const subscriber = firestore()
-      .collection('posts')
-      .orderBy('createdAt', 'desc')
-      .onSnapshot(querySnapshot => {
-        const postsData = [];
-        querySnapshot.forEach(doc => {
-          const data = doc.data();
-          postsData.push({
-            id: doc.id,
-            content: data.content || '',
-            userId: data.userId || '',
-            userName: data.userName || 'User',
-            userProfilePicture: data.userProfilePicture || null,
-            userGender: data.userGender || 'male',
-            createdAt: data.createdAt || new Date(),
-            likes: data.likes || 0,
-            comments: data.comments || []
+    // Get the auth instance
+    const authInstance = getAuth();
+    
+    // Listen for auth state changes
+    const unsubscribeAuth = onAuthStateChanged(authInstance, (user) => {
+      console.log('Auth state changed:', user ? 'User is signed in' : 'User is signed out');
+      
+      if (user) {
+        // User is signed in, fetch posts
+        const postsRef = collection(db, 'posts');
+        const q = query(
+          postsRef,
+          orderBy('createdAt', 'desc')
+        );
+        
+        const subscriber = onSnapshot(q, (querySnapshot) => {
+          const postsData = [];
+          querySnapshot.forEach(doc => {
+            const data = doc.data();
+            postsData.push({
+              id: doc.id,
+              content: data.content || '',
+              userId: data.userId || '',
+              userName: data.userName || 'User',
+              userProfilePicture: data.userProfilePicture || null,
+              userGender: data.userGender || 'male',
+              createdAt: data.createdAt || new Date(),
+              likes: data.likes || 0,
+              comments: data.comments || []
+            });
           });
+          setPosts(postsData);
+          setLoading(false);
+        }, error => {
+          console.error('Error fetching posts:', error);
+          if (error.code === 'permission-denied') {
+            Alert.alert('Error', 'You do not have permission to view posts. Please make sure you are logged in.');
+          } else {
+            Alert.alert('Error', `Failed to load posts: ${error.message}`);
+          }
+          setLoading(false);
         });
-        setPosts(postsData);
-        setLoading(false);
-      }, error => {
-        console.error('Error fetching posts:', error);
-        // More detailed error message
-        if (error.code === 'permission-denied') {
-          Alert.alert('Error', 'You do not have permission to view posts. Please make sure you are logged in.');
-        } else {
-          Alert.alert('Error', `Failed to load posts: ${error.message}`);
-        }
-        setLoading(false);
-      });
 
-    return () => subscriber();
+        return () => subscriber();
+      } else {
+        // User is signed out
+        setPosts([]);
+        setLoading(false);
+        Alert.alert('Error', 'Please log in to view posts');
+      }
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribeAuth();
   }, []);
+
+  const handleDeletePost = async (postId) => {
+    try {
+      const authInstance = getAuth();
+      const currentUser = authInstance.currentUser;
+      
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to delete posts');
+        return;
+      }
+
+      const post = posts.find(p => p.id === postId);
+      if (post.userId !== currentUser.uid) {
+        Alert.alert('Error', 'You can only delete your own posts');
+        return;
+      }
+
+      Alert.alert(
+        'Delete Post',
+        'Are you sure you want to delete this post?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              const postRef = doc(db, 'posts', postId);
+              await deleteDoc(postRef);
+              setMenuVisible(false);
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete post');
+      console.error('Error deleting post:', error);
+    }
+  };
+
+  const handleEditPost = (post) => {
+    Alert.alert('Coming Soon', 'Edit functionality will be available soon!');
+    setMenuVisible(false);
+  };
+
+  const handleSharePost = (post) => {
+    Alert.alert('Coming Soon', 'Share functionality will be available soon!');
+    setMenuVisible(false);
+  };
+
+  const renderPostMenu = () => {
+    if (!selectedPost) return null;
+
+    return (
+      <Modal
+        visible={menuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <View style={styles.menuContainer}>
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => handleEditPost(selectedPost)}
+            >
+              <Icon name="edit" size={24} color="#3949ab" />
+              <Text style={styles.menuItemText}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => handleDeletePost(selectedPost.id)}
+            >
+              <Icon name="delete" size={24} color="#d32f2f" />
+              <Text style={[styles.menuItemText, { color: '#d32f2f' }]}>Delete</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => handleSharePost(selectedPost)}
+            >
+              <Icon name="share" size={24} color="#3949ab" />
+              <Text style={styles.menuItemText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
+  };
 
   if (loading) {
     return (
@@ -62,6 +174,7 @@ const Feed = () => {
 
   return (
     <ScrollView style={styles.feedContainer}>
+      {renderPostMenu()}
       {posts.map(post => (
         <View key={post.id} style={styles.feedItem}>
           <View style={styles.feedHeader}>
@@ -83,6 +196,15 @@ const Feed = () => {
                   : 'Just now'}
               </Text>
             </View>
+            <TouchableOpacity 
+              style={styles.moreButton}
+              onPress={() => {
+                setSelectedPost(post);
+                setMenuVisible(true);
+              }}
+            >
+              <Icon name="more-vert" size={24} color="#666" />
+            </TouchableOpacity>
           </View>
           <Text style={styles.feedContent}>{post.content}</Text>
           <View style={styles.feedActions}>
@@ -175,6 +297,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  moreButton: {
+    padding: 8,
+    marginLeft: 'auto',
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuContainer: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 10,
+    width: '80%',
+    maxWidth: 300,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  menuItemText: {
+    marginLeft: 15,
+    fontSize: 16,
+    color: '#333',
   },
 });
 

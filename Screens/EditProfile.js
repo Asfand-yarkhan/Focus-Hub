@@ -70,7 +70,6 @@ const EditProfile = () => {
 
   const handleGenderSelect = (selectedGender) => {
     setGender(selectedGender);
-    setProfileImage(null);
   };
 
   const handleSave = async () => {
@@ -97,7 +96,7 @@ const EditProfile = () => {
         university: university || '',
         degree: degree || '',
         semester: semester || '',
-        profilePicture: gender === 'male' ? 'male.jpg' : 'female.jpg',
+        profilePicture: profileImage || (gender === 'male' ? 'male.jpg' : 'female.jpg'),
         lastUpdated: firestore.FieldValue.serverTimestamp()
       };
 
@@ -109,7 +108,8 @@ const EditProfile = () => {
 
       // Update auth profile
       await currentUser.updateProfile({
-        displayName: name.trim()
+        displayName: name.trim(),
+        photoURL: profileImage || (gender === 'male' ? 'male.jpg' : 'female.jpg')
       });
 
       Alert.alert('Success', 'Profile updated successfully');
@@ -245,19 +245,19 @@ const EditProfile = () => {
             style={styles.input}
             value={dateOfBirth}
             onChangeText={setDateOfBirth}
-            placeholder="DD/MM/YYYY"
+            placeholder="Enter your date of birth"
             placeholderTextColor="#666"
             editable={!loading}
           />
         </View>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>University Name</Text>
+          <Text style={styles.label}>University</Text>
           <TextInput
             style={styles.input}
             value={university}
             onChangeText={setUniversity}
-            placeholder="Enter your university name"
+            placeholder="Enter your university"
             placeholderTextColor="#666"
             editable={!loading}
           />
@@ -281,9 +281,8 @@ const EditProfile = () => {
             style={styles.input}
             value={semester}
             onChangeText={setSemester}
-            placeholder="Enter your current semester"
+            placeholder="Enter your semester"
             placeholderTextColor="#666"
-            keyboardType="numeric"
             editable={!loading}
           />
         </View>

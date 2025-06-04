@@ -12,10 +12,13 @@ import {
   Keyboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import auth from '@react-native-firebase/auth';
+import { firestore } from '../firebase/config';
 
 const ChatScreen = ({ route, navigation }) => {
   const { groupName } = route.params || { groupName: 'Group Chat' };
   const [message, setMessage] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
   const [messages, setMessages] = useState([
     {
       id: '1',
@@ -26,6 +29,25 @@ const ChatScreen = ({ route, navigation }) => {
   ]);
   
   const flatListRef = useRef(null);
+
+  useEffect(() => {
+    // Fetch user profile
+    const fetchUserProfile = async () => {
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        const userDoc = await firestore()
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+        
+        if (userDoc.exists) {
+          setUserProfile(userDoc.data());
+        }
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
 
   useEffect(() => {
     navigation.setOptions({
@@ -46,6 +68,8 @@ const ChatScreen = ({ route, navigation }) => {
       text: message.trim(),
       sender: 'You',
       timestamp: new Date().toISOString(),
+      userProfilePicture: userProfile?.profilePicture || null,
+      userGender: userProfile?.gender || 'male'
     };
 
     setMessages(prevMessages => [...prevMessages, newMessage]);
@@ -68,7 +92,15 @@ const ChatScreen = ({ route, navigation }) => {
         {!isSystem && (
           <View style={styles.avatarContainer}>
             <Image
-              source={require('../Assets/images/group.jpeg')}
+              source={
+                isYou && item.userProfilePicture
+                  ? { uri: item.userProfilePicture }
+                  : isYou && item.userGender === 'female'
+                  ? require('../Assets/images/female.jpg')
+                  : isYou && item.userGender === 'male'
+                  ? require('../Assets/images/male.jpg')
+                  : require('../Assets/images/group.jpeg')
+              }
               style={styles.avatar}
             />
           </View>

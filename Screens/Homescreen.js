@@ -105,7 +105,7 @@ const HomeScreen = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>{currentUserState?.displayName}</Text>
+            <Text style={styles.title}>Welcome {currentUserState?.displayName}</Text>
           </View>
         </View>
       </ImageBackground>
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   title: {
-    fontSize: 36,
+    fontSize: 30,
     fontWeight: 'bold',
     color: '#fff',
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
