@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { auth, db } from '../firebase/config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 import { onAuthStateChanged, getAuth } from 'firebase/auth';
 
 const Feed = () => {
@@ -10,6 +10,10 @@ const Feed = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [commentingPost, setCommentingPost] = useState(null);
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [likedPosts, setLikedPosts] = useState({});
 
   useEffect(() => {
     // Get the auth instance
@@ -119,6 +123,102 @@ const Feed = () => {
     setMenuVisible(false);
   };
 
+  const handleAddComment = async (postId) => {
+    try {
+      const authInstance = getAuth();
+      const currentUser = authInstance.currentUser;
+      
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to comment');
+        return;
+      }
+
+      if (!commentText.trim()) {
+        Alert.alert('Error', 'Comment cannot be empty');
+        return;
+      }
+
+      const postRef = doc(db, 'posts', postId);
+      const newComment = {
+        id: Date.now().toString(),
+        userId: currentUser.uid,
+        userName: currentUser.displayName || 'Anonymous',
+        userProfilePicture: currentUser.photoURL,
+        content: commentText.trim(),
+        createdAt: new Date()
+      };
+
+      await updateDoc(postRef, {
+        comments: arrayUnion(newComment)
+      });
+
+      setCommentText('');
+      setCommentModalVisible(false);
+      setCommentingPost(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add comment');
+      console.error('Error adding comment:', error);
+    }
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+    try {
+      const authInstance = getAuth();
+      const currentUser = authInstance.currentUser;
+      
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to delete comments');
+        return;
+      }
+
+      const post = posts.find(p => p.id === postId);
+      const comment = post.comments.find(c => c.id === commentId);
+
+      if (comment.userId !== currentUser.uid) {
+        Alert.alert('Error', 'You can only delete your own comments');
+        return;
+      }
+
+      const postRef = doc(db, 'posts', postId);
+      await updateDoc(postRef, {
+        comments: arrayRemove(comment)
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete comment');
+      console.error('Error deleting comment:', error);
+    }
+  };
+
+  const handleLikePost = async (postId) => {
+    try {
+      const authInstance = getAuth();
+      const currentUser = authInstance.currentUser;
+      
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to like posts');
+        return;
+      }
+
+      const postRef = doc(db, 'posts', postId);
+      const isLiked = likedPosts[postId];
+
+      if (isLiked) {
+        await updateDoc(postRef, {
+          likes: increment(-1)
+        });
+        setLikedPosts(prev => ({ ...prev, [postId]: false }));
+      } else {
+        await updateDoc(postRef, {
+          likes: increment(1)
+        });
+        setLikedPosts(prev => ({ ...prev, [postId]: true }));
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to like/unlike post');
+      console.error('Error liking post:', error);
+    }
+  };
+
   const renderPostMenu = () => {
     if (!selectedPost) return null;
 
@@ -164,6 +264,92 @@ const Feed = () => {
     );
   };
 
+  const renderComments = (post) => {
+    return (
+      <View style={styles.commentsContainer}>
+        {post.comments.map(comment => (
+          <View key={comment.id} style={styles.commentItem}>
+            <Image
+              source={
+                comment.userProfilePicture
+                  ? { uri: comment.userProfilePicture }
+                  : require('../Assets/images/male.jpg')
+              }
+              style={styles.commentUserImage}
+            />
+            <View style={styles.commentContent}>
+              <Text style={styles.commentUserName}>{comment.userName}</Text>
+              <Text style={styles.commentText}>{comment.content}</Text>
+              <Text style={styles.commentTime}>
+                {new Date(comment.createdAt.toDate()).toLocaleString()}
+              </Text>
+            </View>
+            {comment.userId === auth.currentUser?.uid && (
+              <TouchableOpacity
+                onPress={() => handleDeleteComment(post.id, comment.id)}
+                style={styles.deleteCommentButton}
+              >
+                <Icon name="delete" size={16} color="#d32f2f" />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderCommentModal = () => {
+    if (!commentingPost) return null;
+
+    return (
+      <Modal
+        visible={commentModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          setCommentModalVisible(false);
+          setCommentingPost(null);
+          setCommentText('');
+        }}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Comments</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setCommentModalVisible(false);
+                  setCommentingPost(null);
+                  setCommentText('');
+                }}
+              >
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.commentsList}>
+              {renderComments(commentingPost)}
+            </ScrollView>
+            <View style={styles.commentInputContainer}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Write a comment..."
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+              />
+              <TouchableOpacity
+                style={styles.sendButton}
+                onPress={() => handleAddComment(commentingPost.id)}
+              >
+                <Icon name="send" size={24} color="#3949ab" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -175,6 +361,7 @@ const Feed = () => {
   return (
     <ScrollView style={styles.feedContainer}>
       {renderPostMenu()}
+      {renderCommentModal()}
       {posts.map(post => (
         <View key={post.id} style={styles.feedItem}>
           <View style={styles.feedHeader}>
@@ -208,14 +395,32 @@ const Feed = () => {
           </View>
           <Text style={styles.feedContent}>{post.content}</Text>
           <View style={styles.feedActions}>
-            <TouchableOpacity style={styles.feedActionButton}>
-              <Text style={styles.feedActionText}>Like ({post.likes})</Text>
+            <TouchableOpacity 
+              style={styles.feedActionButton}
+              onPress={() => handleLikePost(post.id)}
+            >
+              <Icon 
+                name={likedPosts[post.id] ? "favorite" : "favorite-border"} 
+                size={24} 
+                color={likedPosts[post.id] ? "#d32f2f" : "#666"} 
+              />
+              <Text style={styles.feedActionText}>{post.likes}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.feedActionButton}>
-              <Text style={styles.feedActionText}>Comment ({post.comments.length})</Text>
+            <TouchableOpacity 
+              style={styles.feedActionButton}
+              onPress={() => {
+                setCommentingPost(post);
+                setCommentModalVisible(true);
+              }}
+            >
+              <Icon name="comment" size={24} color="#666" />
+              <Text style={styles.feedActionText}>{post.comments.length}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.feedActionButton}>
-              <Text style={styles.feedActionText}>Share</Text>
+            <TouchableOpacity 
+              style={styles.feedActionButton}
+              onPress={() => handleSharePost(post)}
+            >
+              <Icon name="share" size={24} color="#666" />
             </TouchableOpacity>
           </View>
         </View>
@@ -284,13 +489,13 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   feedActionButton: {
-    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
+    marginRight: 15,
   },
   feedActionText: {
+    marginLeft: 5,
     color: '#666',
-    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
@@ -326,6 +531,88 @@ const styles = StyleSheet.create({
     marginLeft: 15,
     fontSize: 16,
     color: '#333',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: '80%',
+    padding: 15,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  commentsList: {
+    flex: 1,
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  commentInput: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    marginRight: 10,
+    maxHeight: 100,
+  },
+  sendButton: {
+    padding: 5,
+  },
+  commentsContainer: {
+    marginTop: 10,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: 15,
+    padding: 10,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+  },
+  commentUserImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 10,
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentUserName: {
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  commentText: {
+    color: '#333',
+  },
+  commentTime: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  deleteCommentButton: {
+    padding: 5,
   },
 });
 
