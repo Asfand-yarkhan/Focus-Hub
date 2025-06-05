@@ -3,7 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, 
 import { auth, db } from '../firebase/config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
-import { onAuthStateChanged, getAuth } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
+import firebase from '@react-native-firebase/app';
+import { getAuth } from '@react-native-firebase/auth';
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
@@ -16,15 +18,15 @@ const Feed = () => {
   const [likedPosts, setLikedPosts] = useState({});
 
   useEffect(() => {
-    // Get the auth instance
-    const authInstance = getAuth();
+    setLoading(true); // Start loading when the effect runs
+
+    const authInstance = getAuth(firebase.app());
     
-    // Listen for auth state changes
     const unsubscribeAuth = onAuthStateChanged(authInstance, (user) => {
       console.log('Auth state changed:', user ? 'User is signed in' : 'User is signed out');
       
       if (user) {
-        // User is signed in, fetch posts
+        setLoading(true); // Set loading to true when fetching posts for a user
         const postsRef = collection(db, 'posts');
         const q = query(
           postsRef,
@@ -48,7 +50,7 @@ const Feed = () => {
             });
           });
           setPosts(postsData);
-          setLoading(false);
+          setLoading(false); // Dismiss loading on successful fetch
         }, error => {
           console.error('Error fetching posts:', error);
           if (error.code === 'permission-denied') {
@@ -56,25 +58,25 @@ const Feed = () => {
           } else {
             Alert.alert('Error', `Failed to load posts: ${error.message}`);
           }
-          setLoading(false);
+          setLoading(false); // Dismiss loading on fetch error
         });
 
         return () => subscriber();
       } else {
         // User is signed out
         setPosts([]);
-        setLoading(false);
+        setLoading(false); // Dismiss loading when user is signed out
         Alert.alert('Error', 'Please log in to view posts');
       }
     });
 
-    // Cleanup subscription on unmount
+    // Cleanup subscriptions on unmount
     return () => unsubscribeAuth();
-  }, []);
+  }, [auth, db]); // Add auth and db as dependencies
 
   const handleDeletePost = async (postId) => {
     try {
-      const authInstance = getAuth();
+      const authInstance = getAuth(firebase.app());
       const currentUser = authInstance.currentUser;
       
       if (!currentUser) {
@@ -125,7 +127,7 @@ const Feed = () => {
 
   const handleAddComment = async (postId) => {
     try {
-      const authInstance = getAuth();
+      const authInstance = getAuth(firebase.app());
       const currentUser = authInstance.currentUser;
       
       if (!currentUser) {
@@ -163,7 +165,7 @@ const Feed = () => {
 
   const handleDeleteComment = async (postId, commentId) => {
     try {
-      const authInstance = getAuth();
+      const authInstance = getAuth(firebase.app());
       const currentUser = authInstance.currentUser;
       
       if (!currentUser) {
@@ -191,7 +193,7 @@ const Feed = () => {
 
   const handleLikePost = async (postId) => {
     try {
-      const authInstance = getAuth();
+      const authInstance = getAuth(firebase.app());
       const currentUser = authInstance.currentUser;
       
       if (!currentUser) {

@@ -3,20 +3,40 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import auth from '@react-native-firebase/auth';
+import { firestore } from '../firebase/config';
 
 const Profile = () => {
   const navigation = useNavigation();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const currentUser = auth().currentUser;
-    if (currentUser) {
-      setUser({
-        name: currentUser.displayName || 'User',
-        email: currentUser.email,
-        photoURL: currentUser.photoURL || 'https://via.placeholder.com/100'
-      });
-    }
+    const fetchUserData = async () => {
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        const userDoc = await firestore.collection('users').doc(currentUser.uid).get();
+        const userData = userDoc.exists ? userDoc.data() : {};
+
+        setUser({
+          name: currentUser.displayName || userData.name || 'User',
+          email: currentUser.email || userData.email,
+          photoURL: currentUser.photoURL || userData.profilePicture || null,
+          gender: userData.gender || 'male',
+        });
+      }
+    };
+
+    fetchUserData();
+
+    const unsubscribe = auth().onAuthStateChanged(user => {
+      if (user) {
+        fetchUserData();
+      } else {
+        setUser(null);
+      }
+    });
+
+    return unsubscribe;
+
   }, []);
 
   const menuItems = [
@@ -59,7 +79,7 @@ const Profile = () => {
       {/* Profile Section */}
       <View style={styles.profileSection}>
         <Image
-          source={{ uri: user.photoURL }}
+          source={user.photoURL ? { uri: user.photoURL } : (user.gender === 'female' ? require('../Assets/images/female.jpg') : require('../Assets/images/male.jpg'))}
           style={styles.profileImage}
         />
         <Text style={styles.userName}>{user.name}</Text>

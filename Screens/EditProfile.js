@@ -9,16 +9,22 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Platform
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { auth, firestore } from '../firebase/config';
+import { auth, db as firestore } from '../firebase/config';
+import { launchImageLibrary } from 'react-native-image-picker';
+import storage from '@react-native-firebase/storage';
+import firebase from '@react-native-firebase/app';
 
 const EditProfile = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [gender, setGender] = useState('male');
   const [profileImage, setProfileImage] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   
   // Form fields
   const [name, setName] = useState('');
@@ -33,14 +39,14 @@ const EditProfile = () => {
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const currentUser = auth().currentUser;
+        const currentUser = auth.currentUser;
         if (!currentUser) {
           Alert.alert('Error', 'Please log in to continue');
           navigation.navigate('Login');
           return;
         }
 
-        const userDoc = await firestore()
+        const userDoc = await firestore
           .collection('users')
           .doc(currentUser.uid)
           .get();
@@ -72,6 +78,66 @@ const EditProfile = () => {
     setGender(selectedGender);
   };
 
+  const handleImagePick = () => {
+    const options = {
+      mediaType: 'photo',
+      includeBase64: false,
+      maxHeight: 200,
+      maxWidth: 200,
+    };
+
+    launchImageLibrary(options, (response) => {
+      if (response.didCancel) {
+        console.log('User cancelled image picker');
+      } else if (response.errorMessage) {
+        console.log('ImagePicker Error: ', response.errorMessage);
+        Alert.alert('Error', 'Failed to pick image.');
+      } else if (response.assets && response.assets.length > 0) {
+        const selectedAsset = response.assets[0];
+        setProfileImage(selectedAsset.uri);
+        uploadImage(selectedAsset.uri);
+      }
+    });
+  };
+
+  const uploadImage = async (uri) => {
+    if (!uri) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      Alert.alert('Error', 'You must be logged in to upload a profile picture.');
+      setUploading(false);
+      return;
+    }
+
+    const filename = `profile_pictures/${currentUser.uid}/${Date.now()}`;
+    const storageRef = storage().ref(filename);
+    const task = storageRef.putFile(uri);
+
+    task.on('state_changed', (snapshot) => {
+      const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+      setUploadProgress(progress);
+    });
+
+    try {
+      await task;
+      const url = await storageRef.getDownloadURL();
+      console.log('Image uploaded successfully:', url);
+      setProfileImage(url);
+      Alert.alert('Success', 'Profile picture uploaded.');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload profile picture.');
+      setProfileImage(null);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Name is required');
@@ -80,7 +146,7 @@ const EditProfile = () => {
 
     setLoading(true);
     try {
-      const currentUser = auth().currentUser;
+      const currentUser = auth.currentUser;
       if (!currentUser) {
         Alert.alert('Error', 'Please log in to continue');
         navigation.navigate('Login');
@@ -101,7 +167,7 @@ const EditProfile = () => {
       };
 
       // Save to Firestore
-      await firestore()
+      await firestore
         .collection('users')
         .doc(currentUser.uid)
         .set(userData, { merge: true });
@@ -143,10 +209,10 @@ const EditProfile = () => {
         <TouchableOpacity 
           onPress={handleSave} 
           style={styles.saveButton}
-          disabled={loading}
+          disabled={loading || uploading}
         >
-          {loading ? (
-            <ActivityIndicator size="small" color="#007AFF" />
+          {loading || uploading ? (
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Text style={styles.saveButtonText}>Save</Text>
           )}
@@ -154,6 +220,33 @@ const EditProfile = () => {
       </View>
 
       <View style={styles.formContainer}>
+        {/* Profile Picture Section */}
+        <View style={styles.profileImageContainer}>
+          <TouchableOpacity onPress={handleImagePick} disabled={uploading}>
+            <View style={styles.profileImageWrapper}>
+              <Image 
+                source={
+                  profileImage
+                    ? { uri: profileImage }
+                    : gender === 'male'
+                    ? require('../Assets/images/male.jpg')
+                    : require('../Assets/images/female.jpg')
+                }
+                style={styles.profileImage}
+              />
+              {uploading && (
+                <View style={styles.uploadProgressOverlay}>
+                  <ActivityIndicator size="small" color="#fff" />
+                  <Text style={styles.uploadProgressText}>{Math.round(uploadProgress)}%</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleImagePick} disabled={uploading}>
+            <Text style={styles.changePhotoText}>Change Profile Photo</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Gender Selection */}
         <View style={styles.genderContainer}>
           <Text style={styles.label}>Gender</Text>
@@ -164,6 +257,7 @@ const EditProfile = () => {
                 gender === 'male' && styles.selectedGender
               ]}
               onPress={() => handleGenderSelect('male')}
+              disabled={loading || uploading}
             >
               <Text style={[
                 styles.genderText,
@@ -176,28 +270,13 @@ const EditProfile = () => {
                 gender === 'female' && styles.selectedGender
               ]}
               onPress={() => handleGenderSelect('female')}
+              disabled={loading || uploading}
             >
               <Text style={[
                 styles.genderText,
                 gender === 'female' && styles.selectedGenderText
               ]}>Female</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Profile Picture Section */}
-        <View style={styles.profileImageContainer}>
-          <View style={styles.profileImageWrapper}>
-            <Image 
-              source={
-                profileImage
-                  ? { uri: profileImage }
-                  : gender === 'male'
-                  ? require('../Assets/images/male.jpg')
-                  : require('../Assets/images/female.jpg')
-              }
-              style={styles.profileImage}
-            />
           </View>
         </View>
 
@@ -210,7 +289,7 @@ const EditProfile = () => {
             onChangeText={setName}
             placeholder="Enter your name"
             placeholderTextColor="#666"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
 
@@ -235,7 +314,7 @@ const EditProfile = () => {
             placeholder="Enter your phone number"
             placeholderTextColor="#666"
             keyboardType="phone-pad"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
 
@@ -247,7 +326,7 @@ const EditProfile = () => {
             onChangeText={setDateOfBirth}
             placeholder="Enter your date of birth"
             placeholderTextColor="#666"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
 
@@ -259,7 +338,7 @@ const EditProfile = () => {
             onChangeText={setUniversity}
             placeholder="Enter your university"
             placeholderTextColor="#666"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
 
@@ -271,7 +350,7 @@ const EditProfile = () => {
             onChangeText={setDegree}
             placeholder="Enter your degree"
             placeholderTextColor="#666"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
 
@@ -283,7 +362,7 @@ const EditProfile = () => {
             onChangeText={setSemester}
             placeholder="Enter your semester"
             placeholderTextColor="#666"
-            editable={!loading}
+            editable={!loading && !uploading}
           />
         </View>
       </View>
@@ -318,7 +397,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButtonText: {
-    color: '#007AFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -394,6 +473,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#ddd',
+    position: 'relative',
   },
   profileImage: {
     width: '100%',
@@ -404,6 +484,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  changePhotoText: {
+    color: '#007AFF',
+    fontSize: 16,
+    marginTop: 10,
+  },
+  uploadProgressOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadProgressText: {
+    color: '#fff',
+    marginTop: 5,
   },
 });
 
