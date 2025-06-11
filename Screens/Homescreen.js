@@ -100,7 +100,10 @@ const HomeScreen = () => {
             <TouchableOpacity style={styles.inviteButton}>
               <Text style={styles.inviteButtonText}>Invite Friends</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.notificationButton}>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              onPress={() => navigation.navigate('NotificationScreen')}
+            >
               <Icon name="bell" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -180,6 +183,20 @@ const HomeScreen = () => {
           />
           <Text style={[styles.navText, activeScreen === 'Explore' && styles.activeNavText]}>
             Explore
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.navButton, activeScreen === 'Chat' && styles.activeNavButton]}
+          onPress={() => navigation.navigate('ChatScreen', { groupId: 'main', groupName: 'Main Chat' })}
+        >
+          <Icon
+            name="comments"
+            size={24}
+            color={activeScreen === 'Chat' ? '#007AFF' : '#666'}
+          />
+          <Text style={[styles.navText, activeScreen === 'Chat' && styles.activeNavText]}>
+            Chat
           </Text>
         </TouchableOpacity>
 

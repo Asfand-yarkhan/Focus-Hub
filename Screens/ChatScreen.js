@@ -10,23 +10,18 @@ import {
   Platform,
   Image,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import { firestore } from '../firebase/config';
 
 const ChatScreen = ({ route, navigation }) => {
-  const { groupName } = route.params || { groupName: 'Group Chat' };
+  const { groupId, groupName } = route.params || { groupId: 'default', groupName: 'Group Chat' };
   const [message, setMessage] = useState('');
   const [userProfile, setUserProfile] = useState(null);
-  const [messages, setMessages] = useState([
-    {
-      id: '1',
-      text: `Welcome to ${groupName}! 👋`,
-      sender: 'System',
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const flatListRef = useRef(null);
 
@@ -47,7 +42,24 @@ const ChatScreen = ({ route, navigation }) => {
     };
 
     fetchUserProfile();
-  }, []);
+
+    // Subscribe to real-time messages
+    const unsubscribe = firestore()
+      .collection('chats')
+      .doc(groupId)
+      .collection('messages')
+      .orderBy('timestamp', 'asc')
+      .onSnapshot(snapshot => {
+        const messageList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setMessages(messageList);
+        setLoading(false);
+      });
+
+    return () => unsubscribe();
+  }, [groupId]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -60,68 +72,77 @@ const ChatScreen = ({ route, navigation }) => {
     });
   }, [navigation, groupName]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (message.trim() === '') return;
 
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+
     const newMessage = {
-      id: Date.now().toString(),
       text: message.trim(),
-      sender: 'You',
-      timestamp: new Date().toISOString(),
+      senderId: currentUser.uid,
+      senderName: userProfile?.username || 'Anonymous',
       userProfilePicture: userProfile?.profilePicture || null,
-      userGender: userProfile?.gender || 'male'
+      userGender: userProfile?.gender || 'male',
+      timestamp: firestore.FieldValue.serverTimestamp(),
     };
 
-    setMessages(prevMessages => [...prevMessages, newMessage]);
-    setMessage('');
-    // Scroll to bottom after sending message
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    try {
+      await firestore()
+        .collection('chats')
+        .doc(groupId)
+        .collection('messages')
+        .add(newMessage);
+
+      setMessage('');
+      // Scroll to bottom after sending message
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   };
 
   const renderMessage = ({ item }) => {
-    const isSystem = item.sender === 'System';
-    const isYou = item.sender === 'You';
+    const currentUser = auth().currentUser;
+    const isYou = item.senderId === currentUser?.uid;
 
     return (
       <View style={[
         styles.messageContainer,
-        isSystem ? styles.systemMessage : isYou ? styles.yourMessage : styles.otherMessage
+        isYou ? styles.yourMessage : styles.otherMessage
       ]}>
-        {!isSystem && (
-          <View style={styles.avatarContainer}>
-            <Image
-              source={
-                isYou && item.userProfilePicture
-                  ? { uri: item.userProfilePicture }
-                  : isYou && item.userGender === 'female'
-                  ? require('../Assets/images/female.jpg')
-                  : isYou && item.userGender === 'male'
-                  ? require('../Assets/images/male.jpg')
-                  : require('../Assets/images/group.jpeg')
-              }
-              style={styles.avatar}
-            />
-          </View>
-        )}
+        <View style={styles.avatarContainer}>
+          <Image
+            source={
+              item.userProfilePicture
+                ? { uri: item.userProfilePicture }
+                : item.userGender === 'female'
+                ? require('../Assets/images/female.jpg')
+                : require('../Assets/images/male.jpg')
+            }
+            style={styles.avatar}
+          />
+        </View>
         <View style={styles.messageContent}>
-          {!isSystem && (
-            <Text style={styles.senderName}>{item.sender}</Text>
-          )}
-          <Text style={[
-            styles.messageText,
-            isSystem ? styles.systemMessageText : null
-          ]}>
-            {item.text}
-          </Text>
+          <Text style={styles.senderName}>{item.senderName}</Text>
+          <Text style={styles.messageText}>{item.text}</Text>
           <Text style={styles.timestamp}>
-            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
           </Text>
         </View>
       </View>
     );
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3949ab" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -172,6 +193,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
   messagesList: {
     padding: 16,
     paddingBottom: 8,
@@ -180,13 +207,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 16,
     maxWidth: '80%',
-  },
-  systemMessage: {
-    alignSelf: 'center',
-    backgroundColor: '#e3f2fd',
-    padding: 12,
-    borderRadius: 20,
-    marginVertical: 8,
   },
   yourMessage: {
     alignSelf: 'flex-end',
@@ -224,10 +244,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  systemMessageText: {
-    color: '#1976d2',
-    textAlign: 'center',
-  },
   timestamp: {
     fontSize: 10,
     color: '#999',
@@ -250,25 +266,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginHorizontal: 8,
     maxHeight: 100,
-    fontSize: 16,
   },
   attachButton: {
     padding: 8,
   },
   sendButton: {
-    backgroundColor: '#3949ab',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 8,
   },
   sendButtonDisabled: {
-    backgroundColor: '#e0e0e0',
+    opacity: 0.5,
   },
   headerButton: {
     padding: 8,
-    marginRight: 8,
   },
 });
 

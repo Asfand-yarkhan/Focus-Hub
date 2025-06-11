@@ -15,6 +15,7 @@ import Explore from './Screens/Explore';
 import ChatScreen from './Screens/ChatScreen';
 import ForgetPassword from './Screens/ForgetPassword';
 import EditProfile from './Screens/EditProfile';
+import NotificationScreen from './Screens/NotificationScreen';
 
 // Initialize Firebase if it hasn't been initialized yet
 if (!firebase.apps.length) {
