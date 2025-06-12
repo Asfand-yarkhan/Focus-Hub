@@ -112,7 +112,7 @@ const Profile = () => {
     }
   };
 
-  const renderProfileSection = memo(() => (
+  const renderProfileSection = () => (
     <View style={styles.profileSection}>
       <Image
         source={
@@ -132,9 +132,9 @@ const Profile = () => {
         <Text style={styles.editProfileText}>Edit Profile</Text>
       </TouchableOpacity>
     </View>
-  ));
+  );
 
-  const renderMenuItem = memo(({ item, index }) => (
+  const renderMenuItem = ({ item, index }) => (
     <TouchableOpacity
       key={index}
       style={styles.menuItem}
@@ -146,7 +146,7 @@ const Profile = () => {
       </View>
       <Icon name="chevron-right" size={24} color="#333" />
     </TouchableOpacity>
-  ));
+  );
 
   if (loading && !refreshing) {
     return (

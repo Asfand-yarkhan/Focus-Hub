@@ -227,7 +227,7 @@ const HomeScreen = () => {
 
         <TouchableOpacity
           style={[styles.navButton, activeScreen === 'Chat' && styles.activeNavButton]}
-          onPress={() => navigation.navigate('ChatScreen', { groupId: 'main', groupName: 'Main Chat' })}
+          onPress={() => navigation.navigate('ChatList')}
         >
           <Icon
             name="comments"

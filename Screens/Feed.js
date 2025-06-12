@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal, TextInput } from 'react-native';
-import { auth, db } from '../firebase/config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, where, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import firebase from '@react-native-firebase/app';
-import { getAuth } from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
@@ -18,24 +15,23 @@ const Feed = () => {
   const [likedPosts, setLikedPosts] = useState({});
 
   useEffect(() => {
-    setLoading(true); // Start loading when the effect runs
-
-    const authInstance = getAuth(firebase.app());
+    setLoading(true);
     
-    const unsubscribeAuth = onAuthStateChanged(authInstance, (user) => {
-      console.log('Auth state changed:', user ? 'User is signed in' : 'User is signed out');
-      
-      if (user) {
-        setLoading(true); // Set loading to true when fetching posts for a user
-        const postsRef = collection(db, 'posts');
-        const q = query(
-          postsRef,
-          orderBy('createdAt', 'desc')
-        );
-        
-        const subscriber = onSnapshot(q, (querySnapshot) => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) {
+      setLoading(false);
+      Alert.alert('Error', 'Please log in to view posts');
+      return;
+    }
+
+    // Subscribe to posts collection
+    const unsubscribe = firestore()
+      .collection('posts')
+      .orderBy('createdAt', 'desc')
+      .onSnapshot(
+        (querySnapshot) => {
           const postsData = [];
-          querySnapshot.forEach(doc => {
+          querySnapshot.forEach((doc) => {
             const data = doc.data();
             postsData.push({
               id: doc.id,
@@ -50,34 +46,21 @@ const Feed = () => {
             });
           });
           setPosts(postsData);
-          setLoading(false); // Dismiss loading on successful fetch
-        }, error => {
+          setLoading(false);
+        },
+        (error) => {
           console.error('Error fetching posts:', error);
-          if (error.code === 'permission-denied') {
-            Alert.alert('Error', 'You do not have permission to view posts. Please make sure you are logged in.');
-          } else {
-            Alert.alert('Error', `Failed to load posts: ${error.message}`);
-          }
-          setLoading(false); // Dismiss loading on fetch error
-        });
+          Alert.alert('Error', 'Failed to load posts');
+          setLoading(false);
+        }
+      );
 
-        return () => subscriber();
-      } else {
-        // User is signed out
-        setPosts([]);
-        setLoading(false); // Dismiss loading when user is signed out
-        Alert.alert('Error', 'Please log in to view posts');
-      }
-    });
-
-    // Cleanup subscriptions on unmount
-    return () => unsubscribeAuth();
-  }, [auth, db]); // Add auth and db as dependencies
+    return () => unsubscribe();
+  }, []);
 
   const handleDeletePost = async (postId) => {
     try {
-      const authInstance = getAuth(firebase.app());
-      const currentUser = authInstance.currentUser;
+      const currentUser = auth().currentUser;
       
       if (!currentUser) {
         Alert.alert('Error', 'You must be logged in to delete posts');
@@ -102,8 +85,7 @@ const Feed = () => {
             text: 'Delete',
             style: 'destructive',
             onPress: async () => {
-              const postRef = doc(db, 'posts', postId);
-              await deleteDoc(postRef);
+              await firestore().collection('posts').doc(postId).delete();
               setMenuVisible(false);
             }
           }
@@ -127,8 +109,7 @@ const Feed = () => {
 
   const handleAddComment = async (postId) => {
     try {
-      const authInstance = getAuth(firebase.app());
-      const currentUser = authInstance.currentUser;
+      const currentUser = auth().currentUser;
       
       if (!currentUser) {
         Alert.alert('Error', 'You must be logged in to comment');
@@ -140,7 +121,7 @@ const Feed = () => {
         return;
       }
 
-      const postRef = doc(db, 'posts', postId);
+      const postRef = firestore().collection('posts').doc(postId);
       const newComment = {
         id: Date.now().toString(),
         userId: currentUser.uid,
@@ -150,8 +131,8 @@ const Feed = () => {
         createdAt: new Date()
       };
 
-      await updateDoc(postRef, {
-        comments: arrayUnion(newComment)
+      await postRef.update({
+        comments: firestore.FieldValue.arrayUnion(newComment)
       });
 
       setCommentText('');
@@ -165,8 +146,7 @@ const Feed = () => {
 
   const handleDeleteComment = async (postId, commentId) => {
     try {
-      const authInstance = getAuth(firebase.app());
-      const currentUser = authInstance.currentUser;
+      const currentUser = auth().currentUser;
       
       if (!currentUser) {
         Alert.alert('Error', 'You must be logged in to delete comments');
@@ -181,9 +161,9 @@ const Feed = () => {
         return;
       }
 
-      const postRef = doc(db, 'posts', postId);
-      await updateDoc(postRef, {
-        comments: arrayRemove(comment)
+      const postRef = firestore().collection('posts').doc(postId);
+      await postRef.update({
+        comments: firestore.FieldValue.arrayRemove(comment)
       });
     } catch (error) {
       Alert.alert('Error', 'Failed to delete comment');
@@ -193,25 +173,24 @@ const Feed = () => {
 
   const handleLikePost = async (postId) => {
     try {
-      const authInstance = getAuth(firebase.app());
-      const currentUser = authInstance.currentUser;
+      const currentUser = auth().currentUser;
       
       if (!currentUser) {
         Alert.alert('Error', 'You must be logged in to like posts');
         return;
       }
 
-      const postRef = doc(db, 'posts', postId);
+      const postRef = firestore().collection('posts').doc(postId);
       const isLiked = likedPosts[postId];
 
       if (isLiked) {
-        await updateDoc(postRef, {
-          likes: increment(-1)
+        await postRef.update({
+          likes: firestore.FieldValue.increment(-1)
         });
         setLikedPosts(prev => ({ ...prev, [postId]: false }));
       } else {
-        await updateDoc(postRef, {
-          likes: increment(1)
+        await postRef.update({
+          likes: firestore.FieldValue.increment(1)
         });
         setLikedPosts(prev => ({ ...prev, [postId]: true }));
       }
@@ -286,7 +265,7 @@ const Feed = () => {
                 {new Date(comment.createdAt.toDate()).toLocaleString()}
               </Text>
             </View>
-            {comment.userId === auth.currentUser?.uid && (
+            {comment.userId === auth().currentUser?.uid && (
               <TouchableOpacity
                 onPress={() => handleDeleteComment(post.id, comment.id)}
                 style={styles.deleteCommentButton}

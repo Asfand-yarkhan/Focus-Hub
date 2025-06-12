@@ -118,7 +118,7 @@ const SignUp = () => {
         .set(userData);
 
       Alert.alert('Success', 'Account created successfully!');
-      navigation.navigate('Home');
+      navigation.navigate('HomeScreen');
     } catch (error) {
       // Handle specific Firebase errors
       switch (error.code) {

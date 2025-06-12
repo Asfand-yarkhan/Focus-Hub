@@ -102,7 +102,7 @@ const Explore = () => {
         </View>
       </View>
 
-      {/* Categories Section - My Groups (Clickable) */}
+      {/* Categories Section - My Groups */}
       <View style={styles.categoriesContainer}>
         <Text style={styles.sectionTitle}>My Groups</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
@@ -137,7 +137,7 @@ const Explore = () => {
         </ScrollView>
       </View>
 
-      {/* Study Groups Section - Popular Study Groups (Non-clickable) */}
+      {/* Study Groups Section */}
       <View style={styles.groupsContainer}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Popular Study Groups</Text>

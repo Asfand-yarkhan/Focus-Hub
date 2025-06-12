@@ -51,7 +51,7 @@ const Login = () => {
     try {
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
       if (userCredential.user) {
-        navigation.navigate('Home');
+        navigation.navigate('HomeScreen');
       }
     } catch (error) {
       if (error.code === 'auth/invalid-email') {
