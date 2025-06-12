@@ -112,6 +112,18 @@ export default function App() {
                   headerTintColor: '#3949ab',
                 }}
               />
+              <Stack.Screen 
+                name="NotificationScreen" 
+                component={NotificationScreen}
+                options={{ 
+                  headerShown: true,
+                  headerTitle: 'Notifications',
+                  headerStyle: {
+                    backgroundColor: '#f8f9fa',
+                  },
+                  headerTintColor: '#3949ab',
+                }}
+              />
             </>
           )}
         </Stack.Navigator>

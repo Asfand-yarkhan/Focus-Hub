@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
 import Icon from 'react-native-vector-icons/FontAwesome';
 // Import modular functions
 import { getAuth, onAuthStateChanged } from '@react-native-firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, addDoc, serverTimestamp } from '@react-native-firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, addDoc, serverTimestamp, getDoc } from '@react-native-firebase/firestore';
 import { firestore } from '../firebase/config';
 
 const HomeScreen = () => {
@@ -14,19 +14,51 @@ const HomeScreen = () => {
   const [postText, setPostText] = useState('');
   const [currentUserState, setCurrentUserState] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [profileCache, setProfileCache] = useState({});
 
   const db = getFirestore();
   const auth = getAuth();
 
+  // Cache user profile data
+  const cacheUserProfile = useCallback((userId, profileData) => {
+    setProfileCache(prev => ({
+      ...prev,
+      [userId]: {
+        data: profileData,
+        timestamp: Date.now()
+      }
+    }));
+  }, []);
+
+  // Get user profile with caching
+  const getUserProfile = useCallback(async (userId) => {
+    // Check cache first
+    const cachedProfile = profileCache[userId];
+    if (cachedProfile && Date.now() - cachedProfile.timestamp < 5 * 60 * 1000) { // 5 minutes cache
+      return cachedProfile.data;
+    }
+
+    // If not in cache or expired, fetch from Firestore
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    if (userDoc.exists()) {
+      const profileData = userDoc.data();
+      cacheUserProfile(userId, profileData);
+      return profileData;
+    }
+    return null;
+  }, [db, profileCache, cacheUserProfile]);
+
   // Listen for authentication state changes
   useEffect(() => {
-    const subscriber = onAuthStateChanged(auth, user => {
+    const subscriber = onAuthStateChanged(auth, async user => {
       setCurrentUserState(user);
       if (user) {
-        // Fetch user profile data
-        const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-          if (doc.exists()) {
-            setUserProfile(doc.data());
+        setIsLoading(true);
+        try {
+          const profile = await getUserProfile(user.uid);
+          if (profile) {
+            setUserProfile(profile);
           } else {
             // Set default profile if none exists
             setUserProfile({
@@ -35,24 +67,31 @@ const HomeScreen = () => {
               profilePicture: null
             });
           }
-        });
-        return unsubscribe;
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+          Alert.alert('Error', 'Failed to load user profile');
+        } finally {
+          setIsLoading(false);
+        }
       }
     });
-    return subscriber; // unsubscribe on unmount
-  }, []);
+    return subscriber;
+  }, [auth, getUserProfile]);
 
-  // Set Feed as active screen when HomeScreen mounts
-  useEffect(() => {
-    setActiveScreen('Feed');
-  }, []);
-
-  // Set Feed as active screen when returning to HomeScreen
+  // Set Feed as active screen when HomeScreen mounts or returns
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       setActiveScreen('Feed');
     }, [])
   );
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   const handleNavigation = (screenName) => {
     setActiveScreen(screenName);
@@ -355,6 +394,11 @@ const styles = StyleSheet.create({
   },
   activeNavText: {
     color: '#007AFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

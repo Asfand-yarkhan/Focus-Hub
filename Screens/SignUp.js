@@ -44,55 +44,64 @@ const SignUp = () => {
 
   const handleSignUp = async () => {
     // Reset all errors
-    setNameError('');
-    setEmailError('');
-    setPasswordError('');
-    setConfirmPasswordError('');
-    setDateOfBirthError('');
-    setUniversityError('');
-    setDegreeError('');
-    setSemesterError('');
+    const errors = {
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      dateOfBirth: '',
+      university: '',
+      degree: '',
+      semester: ''
+    };
 
     // Validate all fields
     if (!name.trim()) {
-      setNameError('Name is required');
-      return;
+      errors.name = 'Name is required';
     }
 
     if (!email) {
-      setEmailError('Email is required');
-      return;
-    }
-    if (!validateEmail(email)) {
-      setEmailError('Please enter a valid email address');
-      return;
+      errors.email = 'Email is required';
+    } else if (!validateEmail(email)) {
+      errors.email = 'Please enter a valid email address';
     }
 
     if (!password) {
-      setPasswordError('Password is required');
-      return;
-    }
-    if (password.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
+      errors.password = 'Password is required';
+    } else if (password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
     }
 
     if (password !== confirmPassword) {
-      setConfirmPasswordError('Passwords do not match');
+      errors.confirmPassword = 'Passwords do not match';
+    }
+
+    // Update error states
+    setNameError(errors.name);
+    setEmailError(errors.email);
+    setPasswordError(errors.password);
+    setConfirmPasswordError(errors.confirmPassword);
+    setDateOfBirthError(errors.dateOfBirth);
+    setUniversityError(errors.university);
+    setDegreeError(errors.degree);
+    setSemesterError(errors.semester);
+
+    // If any errors exist, stop registration
+    if (Object.values(errors).some(error => error !== '')) {
       return;
     }
 
     try {
-      // Create user with email and password
-      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      // Create user account
+      const newUser = await auth().createUserWithEmailAndPassword(email, password);
       
       // Update user profile with name
-      await userCredential.user.updateProfile({
+      await newUser.user.updateProfile({
         displayName: name
       });
 
-      // Create user document in Firestore
-      await firestore().collection('users').doc(userCredential.user.uid).set({
+      // Save additional user data
+      const userData = {
         name: name,
         email: email,
         dateOfBirth: dateOfBirth || '',
@@ -100,22 +109,33 @@ const SignUp = () => {
         degree: degree || '',
         semester: semester || '',
         createdAt: firestore.FieldValue.serverTimestamp()
-      });
+      };
+
+      // Save to Firestore
+      await firestore()
+        .collection('users')
+        .doc(newUser.user.uid)
+        .set(userData);
 
       Alert.alert('Success', 'Account created successfully!');
       navigation.navigate('Home');
     } catch (error) {
-      if (error.code === 'auth/email-already-in-use') {
-        setEmailError('Email is already registered');
-        Alert.alert('Sign Up Failed', 'This email is already registered.');
-      } else if (error.code === 'auth/invalid-email') {
-        setEmailError('Invalid email format');
-        Alert.alert('Sign Up Failed', 'Invalid email format.');
-      } else if (error.code === 'auth/weak-password') {
-        setPasswordError('Password is too weak');
-        Alert.alert('Sign Up Failed', 'Password is too weak.');
-      } else {
-        Alert.alert('Sign Up Failed', error.message);
+      // Handle specific Firebase errors
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          setEmailError('Email is already registered');
+          Alert.alert('Sign Up Failed', 'This email is already registered.');
+          break;
+        case 'auth/invalid-email':
+          setEmailError('Invalid email format');
+          Alert.alert('Sign Up Failed', 'Invalid email format.');
+          break;
+        case 'auth/weak-password':
+          setPasswordError('Password is too weak');
+          Alert.alert('Sign Up Failed', 'Password is too weak.');
+          break;
+        default:
+          Alert.alert('Sign Up Failed', error.message);
       }
     }
   };

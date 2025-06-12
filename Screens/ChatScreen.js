@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
-import { firestore } from '../firebase/config';
+import firestore from '@react-native-firebase/firestore';
 
 const ChatScreen = ({ route, navigation }) => {
   const { groupId, groupName } = route.params || { groupId: 'default', groupName: 'Group Chat' };
@@ -28,16 +28,20 @@ const ChatScreen = ({ route, navigation }) => {
   useEffect(() => {
     // Fetch user profile
     const fetchUserProfile = async () => {
-      const currentUser = auth().currentUser;
-      if (currentUser) {
-        const userDoc = await firestore()
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-        
-        if (userDoc.exists) {
-          setUserProfile(userDoc.data());
+      try {
+        const currentUser = auth().currentUser;
+        if (currentUser) {
+          const userDoc = await firestore()
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+          
+          if (userDoc.exists) {
+            setUserProfile(userDoc.data());
+          }
         }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
       }
     };
 
@@ -49,14 +53,24 @@ const ChatScreen = ({ route, navigation }) => {
       .doc(groupId)
       .collection('messages')
       .orderBy('timestamp', 'asc')
-      .onSnapshot(snapshot => {
-        const messageList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setMessages(messageList);
-        setLoading(false);
-      });
+      .onSnapshot(
+        (snapshot) => {
+          if (snapshot && !snapshot.empty) {
+            const messageList = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            setMessages(messageList);
+          } else {
+            setMessages([]);
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.error('Error fetching messages:', error);
+          setLoading(false);
+        }
+      );
 
     return () => unsubscribe();
   }, [groupId]);
@@ -78,21 +92,37 @@ const ChatScreen = ({ route, navigation }) => {
     const currentUser = auth().currentUser;
     if (!currentUser) return;
 
-    const newMessage = {
-      text: message.trim(),
-      senderId: currentUser.uid,
-      senderName: userProfile?.username || 'Anonymous',
-      userProfilePicture: userProfile?.profilePicture || null,
-      userGender: userProfile?.gender || 'male',
-      timestamp: firestore.FieldValue.serverTimestamp(),
-    };
-
     try {
-      await firestore()
-        .collection('chats')
-        .doc(groupId)
-        .collection('messages')
-        .add(newMessage);
+      // First, ensure the chat document exists
+      const chatRef = firestore().collection('chats').doc(groupId);
+      const chatDoc = await chatRef.get();
+      
+      if (!chatDoc.exists) {
+        // Create the chat document if it doesn't exist
+        await chatRef.set({
+          name: groupName,
+          createdAt: firestore.FieldValue.serverTimestamp(),
+          lastMessage: message.trim(),
+          lastMessageTime: firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      const newMessage = {
+        text: message.trim(),
+        senderId: currentUser.uid,
+        senderName: userProfile?.username || 'Anonymous',
+        userProfilePicture: userProfile?.profilePicture || null,
+        userGender: userProfile?.gender || 'male',
+        timestamp: firestore.FieldValue.serverTimestamp(),
+      };
+
+      await chatRef.collection('messages').add(newMessage);
+
+      // Update the last message in the chat document
+      await chatRef.update({
+        lastMessage: message.trim(),
+        lastMessageTime: firestore.FieldValue.serverTimestamp()
+      });
 
       setMessage('');
       // Scroll to bottom after sending message
