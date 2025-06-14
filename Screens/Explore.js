@@ -1,11 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, FlatList, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 
 const Explore = () => {
   const navigation = useNavigation();
   const [joinedGroups, setJoinedGroups] = useState(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
+  }, []);
 
   const handleGroupPress = (groupName) => {
     navigation.navigate('ChatScreen', { groupName });
@@ -71,88 +78,100 @@ const Explore = () => {
     </View>
   );
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Explore</Text>
-        <TouchableOpacity style={styles.searchButton}>
-          <Icon name="search" size={24} color="#333" />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Icon name="arrow-left" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Explore</Text>
+          <TouchableOpacity style={styles.searchButton}>
+            <Icon name="search" size={24} color="#333" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Stats Section */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>12</Text>
-          <Text style={styles.statLabel}>Study Hours</Text>
+        {/* Stats Section */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statLabel}>Study Hours</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>5</Text>
+            <Text style={styles.statLabel}>Completed Tasks</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statLabel}>Active Goals</Text>
+          </View>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>5</Text>
-          <Text style={styles.statLabel}>Completed Tasks</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statNumber}>3</Text>
-          <Text style={styles.statLabel}>Active Goals</Text>
-        </View>
-      </View>
 
-      {/* Categories Section - My Groups */}
-      <View style={styles.categoriesContainer}>
-        <Text style={styles.sectionTitle}>My Groups</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-          <TouchableOpacity 
-            style={styles.categoryButton}
-            onPress={() => handleGroupPress('Computer Science')}
-          >
-            <Icon name="laptop" size={24} color="#007AFF" />
-            <Text style={styles.categoryText}>Computer Science</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.categoryButton}
-            onPress={() => handleGroupPress('Mathematics')}
-          >
-            <Icon name="calculator" size={24} color="#007AFF" />
-            <Text style={styles.categoryText}>Mathematics</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.categoryButton}
-            onPress={() => handleGroupPress('Physics')}
-          >
-            <Icon name="flask" size={24} color="#007AFF" />
-            <Text style={styles.categoryText}>Science</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.categoryButton}
-            onPress={() => handleGroupPress('Literature')}
-          >
-            <Icon name="book" size={24} color="#007AFF" />
-            <Text style={styles.categoryText}>Literature</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* Study Groups Section */}
-      <View style={styles.groupsContainer}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Popular Study Groups</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
+        {/* Categories Section - My Groups */}
+        <View style={styles.categoriesContainer}>
+          <Text style={styles.sectionTitle}>My Groups</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
+            <TouchableOpacity 
+              style={styles.categoryButton}
+              onPress={() => handleGroupPress('Computer Science')}
+            >
+              <Icon name="laptop" size={24} color="#007AFF" />
+              <Text style={styles.categoryText}>Computer Science</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.categoryButton}
+              onPress={() => handleGroupPress('Mathematics')}
+            >
+              <Icon name="calculator" size={24} color="#007AFF" />
+              <Text style={styles.categoryText}>Mathematics</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.categoryButton}
+              onPress={() => handleGroupPress('Physics')}
+            >
+              <Icon name="flask" size={24} color="#007AFF" />
+              <Text style={styles.categoryText}>Science</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.categoryButton}
+              onPress={() => handleGroupPress('Literature')}
+            >
+              <Icon name="book" size={24} color="#007AFF" />
+              <Text style={styles.categoryText}>Literature</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-        <FlatList
-          data={studyGroups}
-          renderItem={renderGroupItem}
-          keyExtractor={item => item.id}
-          scrollEnabled={false}
-        />
-      </View>
-    </ScrollView>
+
+        {/* Study Groups Section */}
+        <View style={styles.groupsContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Popular Study Groups</Text>
+            <TouchableOpacity>
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={studyGroups}
+            renderItem={renderGroupItem}
+            keyExtractor={item => item.id}
+            scrollEnabled={false}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -160,6 +179,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
