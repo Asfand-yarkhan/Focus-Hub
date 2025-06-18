@@ -59,6 +59,22 @@ const OneOnOneChat = ({ route, navigation }) => {
               ...doc.data()
             }));
             setMessages(messagesList);
+            
+            // Mark messages as read
+            const unreadMessages = snapshot.docs.filter(doc => {
+              const data = doc.data();
+              return data.senderId !== currentUser.uid && !data.read;
+            });
+            
+            if (unreadMessages.length > 0) {
+              const batch = firestore().batch();
+              unreadMessages.forEach(doc => {
+                batch.update(doc.ref, { read: true });
+              });
+              batch.commit().catch(err => {
+                console.error('Error marking messages as read:', err);
+              });
+            }
           } else {
             setMessages([]);
           }
@@ -89,6 +105,7 @@ const OneOnOneChat = ({ route, navigation }) => {
         senderId: currentUser.uid,
         senderName: currentUser.displayName || 'User',
         createdAt: firestore.FieldValue.serverTimestamp(),
+        read: false
       };
 
       // Add message to subcollection
@@ -106,6 +123,24 @@ const OneOnOneChat = ({ route, navigation }) => {
           lastMessage: newMessage.trim(),
           lastMessageTime: firestore.FieldValue.serverTimestamp(),
         });
+
+      // Send notification to the other user
+      try {
+        await firestore().collection('notifications').add({
+          userId: otherUser.id,
+          senderId: currentUser.uid,
+          senderName: currentUser.displayName || 'User',
+          senderPhotoURL: currentUser.photoURL || null,
+          type: 'message',
+          message: `${currentUser.displayName || 'Someone'} sent you a message`,
+          timestamp: firestore.FieldValue.serverTimestamp(),
+          read: false,
+          chatId: chatId,
+          chatName: otherUser.name
+        });
+      } catch (notificationError) {
+        console.error('Error creating notification:', notificationError);
+      }
 
       setNewMessage('');
     } catch (error) {
@@ -128,14 +163,24 @@ const OneOnOneChat = ({ route, navigation }) => {
         <Text style={[styles.messageText, isOwnMessage ? styles.ownMessageText : styles.otherMessageText]}>
           {item.text}
         </Text>
-        <Text style={[styles.messageTime, isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime]}>
-          {item.createdAt
-            ? new Date(item.createdAt.toDate()).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : ''}
-        </Text>
+        <View style={styles.messageFooter}>
+          <Text style={[styles.messageTime, isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime]}>
+            {item.createdAt
+              ? new Date(item.createdAt.toDate()).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : ''}
+          </Text>
+          {isOwnMessage && (
+            <Icon 
+              name={item.read ? "done-all" : "done"} 
+              size={16} 
+              color={item.read ? "#4CAF50" : "#999"} 
+              style={styles.readIcon}
+            />
+          )}
+        </View>
       </View>
     );
   };
@@ -266,6 +311,13 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  readIcon: {
+    marginLeft: 5,
   },
 });
 

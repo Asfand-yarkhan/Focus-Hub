@@ -13,13 +13,144 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { useFocusEffect } from '@react-navigation/native';
 
 const ChatList = ({ navigation }) => {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [filteredFriends, setFilteredFriends] = useState([]);
+
+  // Create friends subcollection if it doesn't exist
+  const createFriendsSubcollection = async () => {
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) return;
+
+      console.log('Creating friends subcollection for user:', currentUser.uid);
+      
+      // Create a dummy document to ensure the subcollection exists
+      await firestore()
+        .collection('users')
+        .doc(currentUser.uid)
+        .collection('friends')
+        .doc('_init')
+        .set({
+          created: firestore.FieldValue.serverTimestamp(),
+          type: 'initialization'
+        });
+      
+      console.log('Friends subcollection created successfully');
+    } catch (error) {
+      console.error('Error creating friends subcollection:', error);
+    }
+  };
+
+  // Fetch user's friends
+  const fetchFriends = async () => {
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        console.log('No current user found');
+        setFriends([]);
+        setFilteredFriends([]);
+        return [];
+      }
+
+      console.log('Fetching friends for user:', currentUser.uid);
+      
+      // First try to create the subcollection if it doesn't exist
+      await createFriendsSubcollection();
+      
+      // Now fetch friends
+      const friendsSnapshot = await firestore()
+        .collection('users')
+        .doc(currentUser.uid)
+        .collection('friends')
+        .get();
+
+      const friendsList = friendsSnapshot.docs
+        .filter(doc => doc.id !== '_init') // Exclude the initialization document
+        .map(doc => doc.id);
+      
+      console.log('Found friends in subcollection:', friendsList.length);
+      
+      if (friendsList.length === 0) {
+        console.log('No friends found in subcollection');
+        setFriends([]);
+        setFilteredFriends([]);
+        return [];
+      }
+
+      // Fetch friends' user data - handle the case where some users might not exist
+      try {
+        const friendsData = await firestore()
+          .collection('users')
+          .where(firestore.FieldPath.documentId(), 'in', friendsList)
+          .get();
+
+        const friendsWithData = friendsData.docs.map(doc => {
+          try {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.username || data.name || data.displayName || 'User',
+              profilePicture: data.profilePicture || data.photoURL || null,
+              email: data.email || '',
+              ...data
+            };
+          } catch (docError) {
+            console.error('Error processing friend document:', doc.id, docError);
+            return null;
+          }
+        }).filter(friend => friend !== null); // Remove any null entries
+
+        console.log('Successfully processed friends:', friendsWithData.length);
+        setFriends(friendsWithData);
+        setFilteredFriends(friendsWithData);
+        return friendsList;
+      } catch (queryError) {
+        console.error('Error fetching friends data:', queryError);
+        // If the 'in' query fails (too many items), fetch them individually
+        console.log('Trying individual friend fetches...');
+        const individualFriends = [];
+        
+        for (const friendId of friendsList) {
+          try {
+            const friendDoc = await firestore()
+              .collection('users')
+              .doc(friendId)
+              .get();
+            
+            if (friendDoc.exists) {
+              const data = friendDoc.data();
+              individualFriends.push({
+                id: friendId,
+                name: data.username || data.name || data.displayName || 'User',
+                profilePicture: data.profilePicture || data.photoURL || null,
+                email: data.email || '',
+                ...data
+              });
+            }
+          } catch (individualError) {
+            console.error('Error fetching individual friend:', friendId, individualError);
+          }
+        }
+        
+        console.log('Successfully fetched individual friends:', individualFriends.length);
+        setFriends(individualFriends);
+        setFilteredFriends(individualFriends);
+        return friendsList;
+      }
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+      console.error('Error details:', error.message, error.code);
+      setFriends([]);
+      setFilteredFriends([]);
+      return [];
+    }
+  };
 
   useEffect(() => {
     const currentUser = auth().currentUser;
@@ -28,31 +159,8 @@ const ChatList = ({ navigation }) => {
       return;
     }
 
-    // Fetch all users except current user
-    const unsubscribeUsers = firestore()
-      .collection('users')
-      .where('uid', '!=', currentUser.uid)
-      .onSnapshot(
-        snapshot => {
-          if (snapshot && !snapshot.empty) {
-            const usersList = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-            setUsers(usersList);
-            setFilteredUsers(usersList);
-          } else {
-            setUsers([]);
-            setFilteredUsers([]);
-          }
-        },
-        error => {
-          console.error('Error fetching users:', error);
-          Alert.alert('Error', 'Failed to load users');
-          setUsers([]);
-          setFilteredUsers([]);
-        }
-      );
+    // Fetch friends first
+    fetchFriends();
 
     // Fetch user's chats
     const unsubscribeChats = firestore()
@@ -81,21 +189,27 @@ const ChatList = ({ navigation }) => {
       );
 
     return () => {
-      unsubscribeUsers();
       unsubscribeChats();
     };
   }, []);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFilteredUsers(users);
+      setFilteredFriends(friends);
     } else {
-      const filtered = users.filter(user =>
-        user.name && user.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const filtered = friends.filter(friend =>
+        friend.name && friend.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredUsers(filtered);
+      setFilteredFriends(filtered);
     }
-  }, [searchQuery, users]);
+  }, [searchQuery, friends]);
+
+  // Refresh friends list when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchFriends();
+    }, [])
+  );
 
   const startNewChat = async (otherUser) => {
     try {
@@ -220,7 +334,14 @@ const ChatList = ({ navigation }) => {
         }
         style={styles.avatar}
       />
-      <Text style={styles.userName}>{item.name || 'User'}</Text>
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{item.name || 'User'}</Text>
+        <View style={styles.friendStatus}>
+          <Icon name="person" size={16} color="#4CAF50" />
+          <Text style={styles.friendStatusText}>Friend</Text>
+        </View>
+      </View>
+      <Icon name="chat" size={24} color="#007AFF" />
     </TouchableOpacity>
   );
 
@@ -238,7 +359,7 @@ const ChatList = ({ navigation }) => {
         <Icon name="search" size={24} color="#666" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search users..."
+          placeholder="Search friends..."
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -246,14 +367,17 @@ const ChatList = ({ navigation }) => {
 
       {searchQuery ? (
         <FlatList
-          data={filteredUsers}
+          data={filteredFriends}
           renderItem={renderUserItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.usersList}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Icon name="search" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>No users found</Text>
+              <Icon name="people" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>No friends found</Text>
+              <Text style={styles.emptySubText}>
+                Add friends to start chatting with them
+              </Text>
             </View>
           }
         />
@@ -263,12 +387,43 @@ const ChatList = ({ navigation }) => {
           renderItem={renderChatItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.chatsList}
+          ListHeaderComponent={
+            friends.length > 0 ? (
+              <View style={styles.recentFriendsSection}>
+                <Text style={styles.sectionTitle}>Recent Friends</Text>
+                <FlatList
+                  data={friends.slice(0, 5)} // Show only first 5 friends
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.recentFriendItem}
+                      onPress={() => startNewChat(item)}
+                    >
+                      <Image
+                        source={
+                          item.profilePicture
+                            ? { uri: item.profilePicture }
+                            : require('../Assets/images/male.jpg')
+                        }
+                        style={styles.recentFriendAvatar}
+                      />
+                      <Text style={styles.recentFriendName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  keyExtractor={item => item.id}
+                />
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Icon name="chat" size={48} color="#ccc" />
               <Text style={styles.emptyText}>No chats yet</Text>
               <Text style={styles.emptySubText}>
-                Search for users to start a conversation
+                Search for your friends to start a conversation
               </Text>
             </View>
           }
@@ -337,9 +492,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
+  userInfo: {
+    flex: 1,
+  },
   userName: {
     fontSize: 16,
     color: '#333',
+  },
+  friendStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  friendStatusText: {
+    fontSize: 14,
+    color: '#666',
   },
   lastMessage: {
     fontSize: 14,
@@ -366,6 +533,35 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 5,
     textAlign: 'center',
+  },
+  recentFriendsSection: {
+    padding: 10,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  recentFriendItem: {
+    alignItems: 'center',
+    padding: 10,
+    marginRight: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    minWidth: 80,
+  },
+  recentFriendAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 5,
+  },
+  recentFriendName: {
+    fontSize: 12,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });
 

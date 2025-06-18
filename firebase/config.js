@@ -1,12 +1,12 @@
 import firebase from '@react-native-firebase/app';
-import { getAuth } from '@react-native-firebase/auth';
+import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 
 // Get the default Firebase app instance
 const app = firebase.app();
 
 // Initialize Auth and Firestore using the specific app instance
-const authInstance = getAuth(app);
+const authInstance = auth(app);
 const db = firestore(app);
 
 // Enable offline persistence - React Native Firebase handles this differently or it might be enabled by default

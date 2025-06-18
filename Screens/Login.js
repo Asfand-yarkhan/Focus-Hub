@@ -15,6 +15,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import ForgetPassword from './ForgetPassword';
 import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import { userStorage } from '../utils/userStorage';
 
 const Login = () => {
   const navigation = useNavigation();
@@ -48,9 +50,66 @@ const Login = () => {
       setPasswordError('Password is required');
       return;
     }
+
     try {
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
       if (userCredential.user) {
+        // Fetch user data from Firestore
+        const userDoc = await firestore()
+          .collection('users')
+          .doc(userCredential.user.uid)
+          .get();
+
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          const profileData = {
+            name: userCredential.user.displayName || userData.name || 'User',
+            email: userCredential.user.email || userData.email,
+            photoURL: userCredential.user.photoURL || userData.profilePicture || null,
+            gender: userData.gender || 'male',
+            phone: userData.phone || '',
+            dateOfBirth: userData.dateOfBirth || '',
+            university: userData.university || '',
+            degree: userData.degree || '',
+            semester: userData.semester || '',
+            lastUpdated: new Date().toISOString()
+          };
+
+          // Save to AsyncStorage
+          await userStorage.saveUserProfile(profileData);
+
+          // Load or initialize user settings
+          const settings = await userStorage.getUserSettings();
+          if (!settings) {
+            await userStorage.saveUserSettings({
+              notifications: true,
+              darkMode: false,
+              language: 'en'
+            });
+          }
+
+          // Load or initialize user preferences
+          const preferences = await userStorage.getUserPreferences();
+          if (!preferences) {
+            await userStorage.saveUserPreferences({
+              studyGroups: [],
+              interests: [],
+              studyHours: 0
+            });
+          }
+
+          // Load or initialize user stats
+          const stats = await userStorage.getUserStats();
+          if (!stats) {
+            await userStorage.saveUserStats({
+              studyHours: 0,
+              completedTasks: 0,
+              activeGoals: 0,
+              joinedGroups: 0
+            });
+          }
+        }
+
         navigation.navigate('HomeScreen');
       }
     } catch (error) {

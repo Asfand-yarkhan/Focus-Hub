@@ -7,23 +7,25 @@ import {
   Image, 
   ScrollView,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Alert
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userStorage } from '../utils/userStorage';
 
-const CACHE_KEY = '@user_profile_cache';
-const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
-
-const Profile = () => {
+const Profile = ({ route }) => {
   const navigation = useNavigation();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(true);
+  const [friendRequestStatus, setFriendRequestStatus] = useState(null); // 'pending', 'accepted', 'none'
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestId, setRequestId] = useState(null); // Add this to track the request ID
 
   const fetchUserData = useCallback(async (forceRefresh = false) => {
     try {
@@ -35,40 +37,75 @@ const Profile = () => {
         return;
       }
 
-      // Try to get cached data first
-      if (!forceRefresh) {
-        const cachedData = await AsyncStorage.getItem(CACHE_KEY);
-        if (cachedData) {
-          const { data, timestamp } = JSON.parse(cachedData);
-          if (Date.now() - timestamp < CACHE_EXPIRY) {
-            setUser(data);
+      // Check if we're viewing another user's profile
+      const targetUserId = route?.params?.userId;
+      if (targetUserId && targetUserId !== currentUser.uid) {
+        setIsOwnProfile(false);
+        
+        // Fetch other user's data
+        const userDoc = await firestore()
+          .collection('users')
+          .doc(targetUserId)
+          .get();
+
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          setUser({
+            id: targetUserId,
+            name: userData.username || userData.name || 'User',
+            email: userData.email || '',
+            photoURL: userData.profilePicture || userData.photoURL || null,
+            gender: userData.gender || 'male',
+            phone: userData.phone || '',
+            dateOfBirth: userData.dateOfBirth || '',
+            university: userData.university || '',
+            degree: userData.degree || '',
+            semester: userData.semester || '',
+          });
+
+          // Check friend request status
+          await checkFriendRequestStatus(currentUser.uid, targetUserId);
+        } else {
+          setError('User not found');
+        }
+      } else {
+        // Viewing own profile
+        setIsOwnProfile(true);
+        
+        // Try to get cached data first
+        if (!forceRefresh) {
+          const cachedProfile = await userStorage.getUserProfile();
+          if (cachedProfile) {
+            setUser(cachedProfile);
             setLoading(false);
             return;
           }
         }
+
+        // Fetch fresh data
+        const userDoc = await firestore()
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+        const userData = userDoc.exists ? userDoc.data() : {};
+        const newUserData = {
+          name: currentUser.displayName || userData.name || 'User',
+          email: currentUser.email || userData.email,
+          photoURL: currentUser.photoURL || userData.profilePicture || null,
+          gender: userData.gender || 'male',
+          phone: userData.phone || '',
+          dateOfBirth: userData.dateOfBirth || '',
+          university: userData.university || '',
+          degree: userData.degree || '',
+          semester: userData.semester || '',
+          lastUpdated: new Date().toISOString()
+        };
+
+        // Cache the new data
+        await userStorage.saveUserProfile(newUserData);
+        setUser(newUserData);
       }
-
-      // Fetch fresh data
-      const userDoc = await firestore()
-        .collection('users')
-        .doc(currentUser.uid)
-        .get();
-
-      const userData = userDoc.exists ? userDoc.data() : {};
-      const newUserData = {
-        name: currentUser.displayName || userData.name || 'User',
-        email: currentUser.email || userData.email,
-        photoURL: currentUser.photoURL || userData.profilePicture || null,
-        gender: userData.gender || 'male',
-      };
-
-      // Cache the new data
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
-        data: newUserData,
-        timestamp: Date.now()
-      }));
-
-      setUser(newUserData);
     } catch (err) {
       console.error('Error fetching user data:', err);
       setError('Failed to load profile data');
@@ -76,7 +113,188 @@ const Profile = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [route?.params?.userId]);
+
+  const checkFriendRequestStatus = async (currentUserId, targetUserId) => {
+    try {
+      // Check if there's a pending request from current user to target user
+      const outgoingRequest = await firestore()
+        .collection('friend_requests')
+        .where('from', '==', currentUserId)
+        .where('to', '==', targetUserId)
+        .where('status', '==', 'pending')
+        .get();
+
+      if (!outgoingRequest.empty) {
+        setFriendRequestStatus('pending');
+        setRequestId(outgoingRequest.docs[0].id); // Store the request ID
+        return;
+      }
+
+      // Check if there's a pending request from target user to current user
+      const incomingRequest = await firestore()
+        .collection('friend_requests')
+        .where('from', '==', targetUserId)
+        .where('to', '==', currentUserId)
+        .where('status', '==', 'pending')
+        .get();
+
+      if (!incomingRequest.empty) {
+        setFriendRequestStatus('received');
+        setRequestId(incomingRequest.docs[0].id); // Store the request ID
+        return;
+      }
+
+      // Check if they're already friends
+      const acceptedRequest = await firestore()
+        .collection('friend_requests')
+        .where('status', '==', 'accepted')
+        .get();
+
+      const isFriend = acceptedRequest.docs.some(doc => {
+        const data = doc.data();
+        return (data.from === currentUserId && data.to === targetUserId) ||
+               (data.from === targetUserId && data.to === currentUserId);
+      });
+
+      if (isFriend) {
+        setFriendRequestStatus('accepted');
+        setRequestId(null); // Clear request ID for accepted requests
+      } else {
+        setFriendRequestStatus('none');
+        setRequestId(null); // Clear request ID when no request exists
+      }
+    } catch (error) {
+      console.error('Error checking friend request status:', error);
+      setFriendRequestStatus('none');
+      setRequestId(null);
+    }
+  };
+
+  const sendFriendRequest = async () => {
+    if (!user || isOwnProfile) return;
+    
+    setRequestLoading(true);
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to send friend requests');
+        return;
+      }
+
+      // Create friend request
+      const requestData = {
+        from: currentUser.uid,
+        to: user.id,
+        status: 'pending',
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+        fromName: currentUser.displayName || 'Anonymous User',
+        toName: user.name || 'Anonymous User',
+        fromPhotoURL: currentUser.photoURL || null,
+        toPhotoURL: user.photoURL || null
+      };
+
+      // Get the document reference to store the request ID
+      const requestRef = await firestore().collection('friend_requests').add(requestData);
+      setRequestId(requestRef.id); // Store the request ID
+
+      // Create notification
+      try {
+        if (!user.id) throw new Error('Recipient userId missing');
+        await firestore().collection('notifications').add({
+          userId: user.id,
+          senderId: currentUser.uid,
+          senderName: currentUser.displayName || 'Anonymous User',
+          senderPhotoURL: currentUser.photoURL || null,
+          type: 'friend_request',
+          message: `${currentUser.displayName || 'Someone'} sent you a friend request`,
+          timestamp: firestore.FieldValue.serverTimestamp(),
+          read: false
+        });
+      } catch (notificationError) {
+        console.error('Error creating notification:', notificationError);
+        Alert.alert('Error', 'Failed to create notification: ' + notificationError.message);
+      }
+
+      setFriendRequestStatus('pending');
+      Alert.alert('Success', 'Friend request sent!');
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      Alert.alert('Error', 'Failed to send friend request');
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  const acceptFriendRequest = async (requestId, fromUserId) => {
+    try {
+      console.log('Accepting friend request:', requestId, 'from user:', fromUserId);
+      
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to accept friend requests');
+        return;
+      }
+
+      // Update friend request status
+      await firestore().collection('friend_requests').doc(requestId).update({
+        status: 'accepted',
+        updatedAt: firestore.FieldValue.serverTimestamp()
+      });
+      console.log('Friend request status updated');
+
+      // Add to current user's friends subcollection
+      await firestore().collection('users').doc(currentUser.uid)
+        .collection('friends').doc(fromUserId).set({ 
+          since: firestore.FieldValue.serverTimestamp(),
+          addedAt: new Date()
+        });
+      console.log('Added to current user friends');
+
+      // Add current user to the other user's friends subcollection
+      await firestore().collection('users').doc(fromUserId)
+        .collection('friends').doc(currentUser.uid).set({ 
+          since: firestore.FieldValue.serverTimestamp(),
+          addedAt: new Date()
+        });
+      console.log('Added to other user friends');
+
+      // Send notification to sender
+      await firestore().collection('notifications').add({
+        userId: fromUserId,
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || 'Anonymous User',
+        type: 'friend_accept',
+        message: `${currentUser.displayName || 'Someone'} accepted your friend request`,
+        timestamp: firestore.FieldValue.serverTimestamp(),
+        read: false
+      });
+      console.log('Notification sent');
+
+      setFriendRequestStatus('accepted');
+      setRequestId(null); // Clear the request ID after accepting
+      Alert.alert('Success', 'Friend request accepted!');
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      console.error('Error details:', error.message, error.code);
+      Alert.alert('Error', 'Failed to accept request: ' + (error.message || ''));
+    }
+  };
+
+  const rejectFriendRequest = async (requestId) => {
+    try {
+      await firestore().collection('friend_requests').doc(requestId).update({
+        status: 'rejected',
+        updatedAt: firestore.FieldValue.serverTimestamp()
+      });
+      setFriendRequestStatus('none');
+      setRequestId(null); // Clear the request ID after rejecting
+      Alert.alert('Success', 'Friend request rejected.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to reject request: ' + (error.message || ''));
+    }
+  };
 
   // Initial load
   useEffect(() => {
@@ -104,7 +322,7 @@ const Profile = () => {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem(CACHE_KEY);
+      await userStorage.clearUserData();
       await auth().signOut();
       navigation.navigate('Login');
     } catch (error) {
@@ -126,11 +344,66 @@ const Profile = () => {
       />
       <Text style={styles.userName}>{user.name}</Text>
       <Text style={styles.userEmail}>{user.email}</Text>
-      <TouchableOpacity 
-        style={styles.editProfileButton}
-        onPress={() => navigation.navigate('EditProfile', { user })}>
-        <Text style={styles.editProfileText}>Edit Profile</Text>
-      </TouchableOpacity>
+      
+      {isOwnProfile ? (
+        <TouchableOpacity 
+          style={styles.editProfileButton}
+          onPress={() => navigation.navigate('EditProfile', { user })}>
+          <Text style={styles.editProfileText}>Edit Profile</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.friendRequestContainer}>
+          {friendRequestStatus === 'none' && (
+            <TouchableOpacity 
+              style={styles.sendRequestButton}
+              onPress={sendFriendRequest}
+              disabled={requestLoading}>
+              {requestLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.sendRequestText}>Send Friend Request</Text>
+              )}
+            </TouchableOpacity>
+          )}
+          
+          {friendRequestStatus === 'pending' && (
+            <View style={styles.requestStatusContainer}>
+              <Text style={styles.requestStatusText}>Friend Request Sent</Text>
+            </View>
+          )}
+          
+          {friendRequestStatus === 'received' && (
+            <View style={styles.requestActionsContainer}>
+              <TouchableOpacity 
+                style={styles.acceptButton}
+                onPress={() => acceptFriendRequest(requestId, user.id)}
+                disabled={requestLoading}>
+                {requestLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.acceptButtonText}>Accept</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.rejectButton}
+                onPress={() => rejectFriendRequest(requestId)}
+                disabled={requestLoading}>
+                {requestLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.rejectButtonText}>Reject</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          {friendRequestStatus === 'accepted' && (
+            <View style={styles.requestStatusContainer}>
+              <Text style={styles.requestStatusText}>Friends</Text>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 
@@ -185,25 +458,32 @@ const Profile = () => {
           <Icon name="arrow-left" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Icon name="cog" size={24} color="#333" />
+        <TouchableOpacity
+          style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}
+          onPress={() => navigation.navigate('SettingsScreen')}
+        >
+          <Icon name="cog" size={28} color="#3949ab" />
         </TouchableOpacity>
       </View>
 
       {user && renderProfileSection()}
 
-      {/* Menu Items */}
-      <View style={styles.menuContainer}>
-        {menuItems.map((item, index) => renderMenuItem({ item, index }))}
-      </View>
+      {/* Menu Items - Only show for own profile */}
+      {isOwnProfile && (
+        <View style={styles.menuContainer}>
+          {menuItems.map((item, index) => renderMenuItem({ item, index }))}
+        </View>
+      )}
 
-      {/* Logout Button */}
-      <TouchableOpacity 
-        style={styles.logoutButton} 
-        onPress={handleLogout}>
-        <Icon name="sign-out" size={24} color="#FF3B30" />
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
+      {/* Logout Button - Only show for own profile */}
+      {isOwnProfile && (
+        <TouchableOpacity 
+          style={styles.logoutButton} 
+          onPress={handleLogout}>
+          <Icon name="sign-out" size={24} color="#FF3B30" />
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 };
@@ -258,9 +538,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-  },
-  settingsButton: {
-    padding: 8,
   },
   profileSection: {
     alignItems: 'center',
@@ -332,6 +609,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  friendRequestContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  sendRequestButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  sendRequestText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  requestStatusContainer: {
+    padding: 10,
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+  },
+  requestStatusText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  requestActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  acceptButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  rejectButton: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  rejectButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

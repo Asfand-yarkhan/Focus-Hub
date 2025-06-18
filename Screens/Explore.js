@@ -2,23 +2,53 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, FlatList, SafeAreaView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const JOINED_GROUPS_KEY = '@focushub_joined_groups';
 
 const Explore = () => {
   const navigation = useNavigation();
   const [joinedGroups, setJoinedGroups] = useState(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
+  // Load joined groups from AsyncStorage on mount
   useEffect(() => {
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
+    const loadJoinedGroups = async () => {
+      try {
+        const storedGroups = await AsyncStorage.getItem(JOINED_GROUPS_KEY);
+        if (storedGroups) {
+          setJoinedGroups(new Set(JSON.parse(storedGroups)));
+        }
+      } catch (error) {
+        console.error('Error loading joined groups:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadJoinedGroups();
   }, []);
 
-  const handleGroupPress = (groupName) => {
-    navigation.navigate('ChatScreen', { groupName });
+  // Save joined groups to AsyncStorage whenever they change
+  useEffect(() => {
+    const saveJoinedGroups = async () => {
+      try {
+        await AsyncStorage.setItem(JOINED_GROUPS_KEY, JSON.stringify([...joinedGroups]));
+      } catch (error) {
+        console.error('Error saving joined groups:', error);
+      }
+    };
+
+    if (!isLoading) {
+      saveJoinedGroups();
+    }
+  }, [joinedGroups, isLoading]);
+
+  const handleGroupPress = (groupId, groupName) => {
+    navigation.navigate('ChatScreen', { groupId, groupName });
   };
 
-  const handleJoinPress = (groupId) => {
+  const handleJoinPress = async (groupId) => {
     if (joinedGroups.has(groupId)) {
       return;
     }
@@ -75,6 +105,11 @@ const Explore = () => {
           {joinedGroups.has(item.id) ? 'Requested' : 'Join'}
         </Text>
       </TouchableOpacity>
+      <TouchableOpacity 
+        onPress={() => handleGroupPress(item.id, item.name)}
+      >
+        {/* ...rest of the group card... */}
+      </TouchableOpacity>
     </View>
   );
 
@@ -126,28 +161,28 @@ const Explore = () => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
             <TouchableOpacity 
               style={styles.categoryButton}
-              onPress={() => handleGroupPress('Computer Science')}
+              onPress={() => handleGroupPress('1', 'Computer Science')}
             >
               <Icon name="laptop" size={24} color="#007AFF" />
               <Text style={styles.categoryText}>Computer Science</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.categoryButton}
-              onPress={() => handleGroupPress('Mathematics')}
+              onPress={() => handleGroupPress('2', 'Mathematics')}
             >
               <Icon name="calculator" size={24} color="#007AFF" />
               <Text style={styles.categoryText}>Mathematics</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.categoryButton}
-              onPress={() => handleGroupPress('Physics')}
+              onPress={() => handleGroupPress('3', 'Physics')}
             >
               <Icon name="flask" size={24} color="#007AFF" />
               <Text style={styles.categoryText}>Science</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.categoryButton}
-              onPress={() => handleGroupPress('Literature')}
+              onPress={() => handleGroupPress('4', 'Literature')}
             >
               <Icon name="book" size={24} color="#007AFF" />
               <Text style={styles.categoryText}>Literature</Text>

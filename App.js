@@ -18,10 +18,19 @@ import EditProfile from './Screens/EditProfile';
 import NotificationScreen from './Screens/NotificationScreen';
 import ChatList from './Screens/ChatList';
 import OneOnOneChat from './Screens/OneOnOneChat';
+import FirebaseTest from './Screens/FirebaseTest';
+import SettingsScreen from './Screens/SettingsScreen';
 
 // Initialize Firebase if it hasn't been initialized yet
 if (!firebase.apps.length) {
-  firebase.initializeApp();
+  try {
+    firebase.initializeApp();
+    console.log('Firebase initialized successfully');
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+  }
+} else {
+  console.log('Firebase already initialized');
 }
 
 // Initialize navigation
@@ -62,6 +71,11 @@ export default function App() {
           }}
         >
           <Stack.Screen
+            name="Welcome"
+            component={Welcome}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="Login"
             component={Login}
             options={{ headerShown: false }}
@@ -74,6 +88,11 @@ export default function App() {
           <Stack.Screen
             name="HomeScreen"
             component={HomeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Feed"
+            component={Feed}
             options={{ headerShown: false }}
           />
           <Stack.Screen
@@ -113,6 +132,21 @@ export default function App() {
               title: 'Notifications',
               headerShown: true,
             }}
+          />
+          <Stack.Screen
+            name="Explore"
+            component={Explore}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="FirebaseTest"
+            component={FirebaseTest}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SettingsScreen"
+            component={SettingsScreen}
+            options={{ title: 'Settings', headerShown: true }}
           />
         </Stack.Navigator>
       </NavigationContainer>

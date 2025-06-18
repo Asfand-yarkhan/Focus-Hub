@@ -13,10 +13,11 @@ const Feed = () => {
   const [commentingPost, setCommentingPost] = useState(null);
   const [commentModalVisible, setCommentModalVisible] = useState(false);
   const [likedPosts, setLikedPosts] = useState({});
+  const [friends, setFriends] = useState([]);
+  let unsubscribePosts = null;
 
   useEffect(() => {
     setLoading(true);
-    
     const currentUser = auth().currentUser;
     if (!currentUser) {
       setLoading(false);
@@ -24,38 +25,68 @@ const Feed = () => {
       return;
     }
 
-    // Subscribe to posts collection
-    const unsubscribe = firestore()
-      .collection('posts')
-      .orderBy('createdAt', 'desc')
-      .onSnapshot(
-        (querySnapshot) => {
-          const postsData = [];
-          querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            postsData.push({
-              id: doc.id,
-              content: data.content || '',
-              userId: data.userId || '',
-              userName: data.userName || 'User',
-              userProfilePicture: data.userProfilePicture || null,
-              userGender: data.userGender || 'male',
-              createdAt: data.createdAt || new Date(),
-              likes: data.likes || 0,
-              comments: data.comments || []
-            });
+    // Fetch friends first
+    const unsubscribeFriends = firestore()
+      .collection('friend_requests')
+      .where('status', '==', 'accepted')
+      .onSnapshot(friendSnap => {
+        const friendIds = [];
+        if (friendSnap && !friendSnap.empty) {
+          friendSnap.forEach(doc => {
+            if (doc && doc.exists) {
+              const data = doc.data();
+              if (data && data.from === currentUser.uid) friendIds.push(data.to);
+              if (data && data.to === currentUser.uid) friendIds.push(data.from);
+            }
           });
-          setPosts(postsData);
-          setLoading(false);
-        },
-        (error) => {
-          console.error('Error fetching posts:', error);
-          Alert.alert('Error', 'Failed to load posts');
-          setLoading(false);
         }
-      );
+        setFriends(friendIds);
 
-    return () => unsubscribe();
+        // Unsubscribe previous posts listener if any
+        if (unsubscribePosts) unsubscribePosts();
+
+        // Only subscribe to posts after friends are loaded
+        unsubscribePosts = firestore()
+          .collection('posts')
+          .orderBy('createdAt', 'desc')
+          .onSnapshot(
+            (querySnapshot) => {
+              const postsData = [];
+              if (querySnapshot && !querySnapshot.empty) {
+                querySnapshot.forEach((doc) => {
+                  if (doc && doc.exists) {
+                    const data = doc.data();
+                    if (data && (friendIds.includes(data.userId) || data.userId === currentUser.uid)) {
+                      postsData.push({
+                        id: doc.id,
+                        content: data.content || '',
+                        userId: data.userId || '',
+                        userName: data.userName || 'User',
+                        userProfilePicture: data.userProfilePicture || null,
+                        userGender: data.userGender || 'male',
+                        createdAt: data.createdAt || new Date(),
+                        likedBy: data.likedBy || [],
+                        comments: data.comments || []
+                      });
+                    }
+                  }
+                });
+              }
+              setPosts(postsData);
+              setLoading(false);
+            },
+            (error) => {
+              console.error('Error fetching posts:', error);
+              Alert.alert('Error', 'Failed to load posts');
+              setLoading(false);
+            }
+          );
+      });
+
+    return () => {
+      unsubscribeFriends();
+      if (unsubscribePosts) unsubscribePosts();
+    };
   }, []);
 
   const handleDeletePost = async (postId) => {
@@ -174,23 +205,25 @@ const Feed = () => {
   const handleLikePost = async (postId) => {
     try {
       const currentUser = auth().currentUser;
-      
       if (!currentUser) {
         Alert.alert('Error', 'You must be logged in to like posts');
         return;
       }
-
       const postRef = firestore().collection('posts').doc(postId);
-      const isLiked = likedPosts[postId];
-
+      const postDoc = await postRef.get();
+      const data = postDoc.data();
+      const likedBy = data.likedBy || [];
+      const isLiked = likedBy.includes(currentUser.uid);
       if (isLiked) {
+        // Unlike
         await postRef.update({
-          likes: firestore.FieldValue.increment(-1)
+          likedBy: firestore.FieldValue.arrayRemove(currentUser.uid)
         });
         setLikedPosts(prev => ({ ...prev, [postId]: false }));
       } else {
+        // Like
         await postRef.update({
-          likes: firestore.FieldValue.increment(1)
+          likedBy: firestore.FieldValue.arrayUnion(currentUser.uid)
         });
         setLikedPosts(prev => ({ ...prev, [postId]: true }));
       }
@@ -385,7 +418,7 @@ const Feed = () => {
                 size={24} 
                 color={likedPosts[post.id] ? "#d32f2f" : "#666"} 
               />
-              <Text style={styles.feedActionText}>{post.likes}</Text>
+              <Text style={styles.feedActionText}>{post.likedBy.length}</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.feedActionButton}

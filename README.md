@@ -26,6 +26,28 @@ A React Native application for managing study sessions and productivity.
    npm run ios
    ```
 
+## Troubleshooting Firebase Issues
+
+If you're experiencing Firebase connection errors:
+
+1. **Missing google-services.json**: Make sure you have downloaded the `google-services.json` file from your Firebase console and placed it in `android/app/` directory.
+
+2. **Firebase Project Configuration**: 
+   - Ensure your Firebase project has Authentication enabled
+   - Enable Firestore Database in your Firebase console
+   - Set up Firestore security rules properly
+
+3. **Android Build Issues**:
+   - Clean and rebuild your project:
+     ```bash
+     cd android && ./gradlew clean
+     cd .. && npm run android
+     ```
+
+4. **Firebase Rules**: Make sure your Firestore rules allow read/write access for authenticated users.
+
+5. **Network Issues**: Check your internet connection and ensure the device can reach Firebase servers.
+
 ## Important Security Notes
 
 The following files contain sensitive information and should never be committed to version control:
@@ -144,3 +166,45 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+# Features
+
+### Friend Request Notifications
+- Users can send friend requests to other users
+- Real-time notifications are sent when friend requests are received
+- Notification badge shows unread notification count
+- Users can accept or reject friend requests from their profile
+- Notifications are automatically marked as read when viewed
+
+### How Friend Requests Work
+1. **Sending Requests**: Users can send friend requests through the "Invite Friends" modal
+2. **Notifications**: Recipients receive real-time notifications about new friend requests
+3. **Managing Requests**: Users can view pending requests and accept/reject them from the sender's profile
+4. **Status Tracking**: The app tracks friend request status (none, pending, received, accepted)
+
+### Notification Types
+- **Friend Requests**: Orange icon, navigates to sender's profile
+- **Likes**: Pink icon, navigates to the liked post
+- **Comments**: Blue icon, navigates to the commented post
+- **Messages**: Purple icon, navigates to the chat
+
+## Technical Implementation
+
+### Database Collections
+- `users`: User profiles and information
+- `friend_requests`: Friend request data with status tracking
+- `notifications`: Real-time notifications for various activities
+- `posts`: User posts and content
+- `chats`: Chat rooms and messages
+
+### Key Components
+- `NotificationScreen.js`: Displays and manages notifications
+- `Profile.js`: Handles friend request actions (accept/reject)
+- `InviteFriendsModal.js`: Sends friend requests and creates notifications
+- `Homescreen.js`: Shows notification badge with unread count
+
+### Firestore Rules
+- Users can read their own notifications
+- Users can create notifications for others
+- Users can update their own notifications (mark as read)
+- Friend requests have appropriate read/write permissions

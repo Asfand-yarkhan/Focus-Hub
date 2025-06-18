@@ -7,49 +7,115 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
-import { firestore } from '../firebase/config';
+import firestore from '@react-native-firebase/firestore';
+import firebase from '@react-native-firebase/app';
 
 const NotificationScreen = ({ navigation }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const currentUser = auth().currentUser;
-    if (!currentUser) return;
+    const fetchData = async () => {
+      try {
+        console.log('Starting notification fetch...');
+        
+        // Test Firebase connection without authentication first
+        console.log('Testing basic Firebase connection...');
+        try {
+          // Test if Firebase is properly initialized
+          const firebaseApp = firebase.app();
+          console.log('Firebase app initialized:', firebaseApp.name);
+          
+          // Test basic Firestore connection
+          const testCollection = firestore().collection('test');
+          console.log('Firestore collection reference created successfully');
+          
+        } catch (firebaseError) {
+          console.error('Firebase initialization error:', firebaseError);
+          setError('Firebase not properly initialized: ' + firebaseError.message);
+          setLoading(false);
+          return;
+        }
+        
+        const currentUser = auth().currentUser;
+        console.log('Current user:', currentUser ? currentUser.uid : 'No user');
+        
+        if (!currentUser) {
+          setError('You are not logged in.');
+          setLoading(false);
+          return;
+        }
 
-    // Fetch user profile
-    const fetchUserProfile = async () => {
-      const userDoc = await firestore()
-        .collection('users')
-        .doc(currentUser.uid)
-        .get();
-      
-      if (userDoc.exists) {
-        setUserProfile(userDoc.data());
+        // Fetch user profile
+        console.log('Fetching user profile...');
+        const userDoc = await firestore()
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+        if (userDoc.exists) {
+          setUserProfile(userDoc.data());
+          console.log('User profile loaded');
+        } else {
+          console.log('User profile not found');
+        }
+
+        // Subscribe to real-time notifications
+        console.log('Setting up notifications listener...');
+        const unsubscribe = firestore()
+          .collection('notifications')
+          .where('userId', '==', currentUser.uid)
+          .onSnapshot((snapshot) => {
+            console.log('Notifications snapshot received:', snapshot.docs.length, 'notifications');
+            const notificationList = snapshot.docs.map(docSnap => {
+              const data = docSnap.data();
+              return {
+                id: docSnap.id,
+                ...data,
+                timestamp: data.timestamp && data.timestamp.toDate ? data.timestamp.toDate() : null,
+              };
+            }).filter(notification => notification.id !== currentUser.uid && !notification.isDeleted);
+            setNotifications(notificationList);
+            setLoading(false);
+            
+            // Mark all unread notifications as read
+            try {
+              const unreadNotifications = snapshot.docs.filter(docSnap => !docSnap.data().read);
+              if (unreadNotifications.length > 0) {
+                console.log('Marking', unreadNotifications.length, 'notifications as read');
+                const batch = firestore().batch();
+                unreadNotifications.forEach(docSnap => {
+                  batch.update(docSnap.ref, { read: true });
+                });
+                batch.commit().catch(err => {
+                  console.error('Error marking notifications as read:', err);
+                });
+              }
+            } catch (err) {
+              console.error('Error in marking notifications as read:', err);
+            }
+          }, (err) => {
+            console.error('Error in notifications listener:', err);
+            setError('Error fetching notifications: ' + err.message);
+            setLoading(false);
+          });
+        
+        return () => {
+          console.log('Cleaning up notifications listener');
+          unsubscribe();
+        };
+      } catch (err) {
+        console.error('Error in fetchData:', err);
+        setError('Error: ' + err.message);
+        setLoading(false);
       }
     };
-
-    fetchUserProfile();
-
-    // Subscribe to real-time notifications
-    const unsubscribe = firestore()
-      .collection('notifications')
-      .where('userId', '==', currentUser.uid)
-      .orderBy('timestamp', 'desc')
-      .onSnapshot(snapshot => {
-        const notificationList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setNotifications(notificationList);
-        setLoading(false);
-      });
-
-    return () => unsubscribe();
+    fetchData();
   }, []);
 
   const getNotificationIcon = (type) => {
@@ -62,6 +128,8 @@ const NotificationScreen = ({ navigation }) => {
         return 'person-add';
       case 'message':
         return 'message';
+      case 'friend_request':
+        return 'person-add';
       default:
         return 'notifications';
     }
@@ -77,18 +145,22 @@ const NotificationScreen = ({ navigation }) => {
         return '#4caf50';
       case 'message':
         return '#9c27b0';
+      case 'friend_request':
+        return '#ff9800';
       default:
         return '#757575';
     }
   };
 
-  const handleNotificationPress = (notification) => {
-    // Mark notification as read
-    firestore()
-      .collection('notifications')
-      .doc(notification.id)
-      .update({ read: true });
-
+  const handleNotificationPress = async (notification) => {
+    try {
+      await firestore()
+        .collection('notifications')
+        .doc(notification.id)
+        .update({ read: true });
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+    }
     // Navigate based on notification type
     switch (notification.type) {
       case 'like':
@@ -96,6 +168,7 @@ const NotificationScreen = ({ navigation }) => {
         navigation.navigate('Feed', { postId: notification.postId });
         break;
       case 'follow':
+      case 'friend_request':
         navigation.navigate('Profile', { userId: notification.senderId });
         break;
       case 'message':
@@ -109,27 +182,147 @@ const NotificationScreen = ({ navigation }) => {
     }
   };
 
-  const renderNotification = ({ item }) => (
-    <TouchableOpacity
-      style={[styles.notificationItem, !item.read && styles.unreadNotification]}
-      onPress={() => handleNotificationPress(item)}
-    >
-      <View style={styles.notificationIconContainer}>
-        <Icon
-          name={getNotificationIcon(item.type)}
-          size={24}
-          color={getNotificationColor(item.type)}
-        />
+  const deleteNotification = async (notificationId) => {
+    try {
+      await firestore()
+        .collection('notifications')
+        .doc(notificationId)
+        .delete();
+      Alert.alert('Success', 'Notification deleted successfully');
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      Alert.alert('Error', 'Failed to delete notification: ' + (error.message || ''));
+    }
+  };
+
+  const deleteAllNotifications = async () => {
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to delete notifications');
+        return;
+      }
+
+      Alert.alert(
+        'Delete All Notifications',
+        'Are you sure you want to delete all notifications? This action cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Delete All', 
+            style: 'destructive', 
+            onPress: async () => {
+              try {
+                const batch = firestore().batch();
+                notifications.forEach(notification => {
+                  const docRef = firestore().collection('notifications').doc(notification.id);
+                  batch.delete(docRef);
+                });
+                await batch.commit();
+                Alert.alert('Success', 'All notifications deleted successfully');
+              } catch (error) {
+                console.error('Error deleting all notifications:', error);
+                Alert.alert('Error', 'Failed to delete all notifications: ' + (error.message || ''));
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error in deleteAllNotifications:', error);
+      Alert.alert('Error', 'Failed to delete all notifications: ' + (error.message || ''));
+    }
+  };
+
+  const renderNotification = ({ item }) => {
+    console.log('Rendering notification:', item);
+    return (
+      <View style={styles.notificationContainer}>
+        <TouchableOpacity
+          style={[styles.notificationItem, !item.read && styles.unreadNotification]}
+          onPress={() => handleNotificationPress(item)}
+        >
+          <View style={styles.notificationIconContainer}>
+            <Icon
+              name={getNotificationIcon(item.type)}
+              size={24}
+              color={getNotificationColor(item.type)}
+            />
+          </View>
+          <View style={styles.notificationContent}>
+            <Text style={styles.notificationText}>{item.message}</Text>
+            <Text style={styles.notificationTime}>
+              {item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}
+            </Text>
+          </View>
+          {!item.read && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
+        
+        {/* Delete Button */}
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => {
+            Alert.alert(
+              'Delete Notification',
+              'Are you sure you want to delete this notification?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => deleteNotification(item.id) }
+              ]
+            );
+          }}
+        >
+          <Icon name="delete" size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
-      <View style={styles.notificationContent}>
-        <Text style={styles.notificationText}>{item.message}</Text>
-        <Text style={styles.notificationTime}>
-          {item.timestamp ? new Date(item.timestamp.toDate()).toLocaleString() : ''}
-        </Text>
-      </View>
-      {!item.read && <View style={styles.unreadDot} />}
-    </TouchableOpacity>
-  );
+    );
+  };
+
+  const acceptFriendRequest = async (requestId, fromUserId) => {
+    try {
+      await firestore().collection('friend_requests').doc(requestId).update({
+        status: 'accepted',
+        updatedAt: firestore.FieldValue.serverTimestamp()
+      });
+      // Add to each other's friends subcollection
+      await firestore().collection('users').doc(auth().currentUser.uid)
+        .collection('friends').doc(fromUserId).set({ since: new Date() });
+      await firestore().collection('users').doc(fromUserId)
+        .collection('friends').doc(auth().currentUser.uid).set({ since: new Date() });
+      // Send notification to sender
+      await firestore().collection('notifications').add({
+        userId: fromUserId,
+        senderId: auth().currentUser.uid,
+        senderName: auth().currentUser.displayName || 'Anonymous User',
+        type: 'friend_accept',
+        message: `${auth().currentUser.displayName || 'Someone'} accepted your friend request`,
+        timestamp: firestore.FieldValue.serverTimestamp(),
+        read: false
+      });
+      Alert.alert('Success', 'Friend request accepted!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to accept request: ' + (error.message || ''));
+    }
+  };
+
+  const showMyFriends = async () => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    await fetchFriends();
+    if (friends.length === 0) {
+      setFilteredUsers([]);
+      return;
+    }
+    const usersSnapshot = await firestore()
+      .collection('users')
+      .where(firestore.FieldPath.documentId(), 'in', friends)
+      .get();
+    const users = usersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    setFilteredUsers(users);
+  };
 
   if (loading) {
     return (
@@ -139,8 +332,119 @@ const NotificationScreen = ({ navigation }) => {
     );
   }
 
+  if (error) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Icon name="error" size={48} color="#f44336" />
+        <Text style={{ color: 'red', fontSize: 16, textAlign: 'center', marginTop: 16 }}>{error}</Text>
+        
+        <View style={styles.errorDetails}>
+          <Text style={styles.errorDetailText}>Firebase Project: focus-hub-b58fe</Text>
+          <Text style={styles.errorDetailText}>Package: com.focushub</Text>
+          <Text style={styles.errorDetailText}>Check console logs for details</Text>
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => {
+            setError(null);
+            setLoading(true);
+            // Re-trigger the useEffect
+            const fetchData = async () => {
+              try {
+                console.log('=== RETRYING FIREBASE CONNECTION ===');
+                console.log('Testing basic Firebase connection...');
+                
+                // Test Firebase app
+                const firebaseApp = firebase.app();
+                console.log('Firebase app:', firebaseApp.name);
+                
+                // Test Firestore
+                const testCollection = firestore().collection('test');
+                console.log('Firestore collection created');
+                
+                // Test Auth
+                const currentUser = auth().currentUser;
+                console.log('Current user:', currentUser ? currentUser.uid : 'No user');
+                
+                if (!currentUser) {
+                  setError('You are not logged in.');
+                  setLoading(false);
+                  return;
+                }
+
+                // Subscribe to real-time notifications
+                const unsubscribe = firestore()
+                  .collection('notifications')
+                  .where('userId', '==', currentUser.uid)
+                  .onSnapshot((snapshot) => {
+                    const notificationList = snapshot.docs.map(docSnap => {
+                      const data = docSnap.data();
+                      return {
+                        id: docSnap.id,
+                        ...data,
+                        timestamp: data.timestamp && data.timestamp.toDate ? data.timestamp.toDate() : null,
+                      };
+                    }).filter(notification => notification.id !== currentUser.uid && !notification.isDeleted);
+                    setNotifications(notificationList);
+                    setLoading(false);
+                  }, (err) => {
+                    console.error('Firestore listener error:', err);
+                    setError('Firestore error: ' + err.message);
+                    setLoading(false);
+                  });
+                
+                return () => unsubscribe();
+              } catch (err) {
+                console.error('Retry error:', err);
+                setError('Retry failed: ' + err.message);
+                setLoading(false);
+              }
+            };
+            fetchData();
+          }}
+        >
+          <Text style={styles.retryButtonText}>Retry Connection</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.retryButton, { backgroundColor: '#666', marginTop: 8 }]}
+          onPress={() => {
+            console.log('=== FIREBASE DEBUG INFO ===');
+            console.log('Firebase apps:', firebase.apps.length);
+            console.log('Current app:', firebase.app().name);
+            console.log('Auth state:', auth().currentUser);
+            console.log('Firestore instance:', firestore().app.name);
+          }}
+        >
+          <Text style={styles.retryButtonText}>Debug Info</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.retryButton, { backgroundColor: '#9c27b0', marginTop: 8 }]}
+          onPress={() => navigation.navigate('FirebaseTest')}
+        >
+          <Text style={styles.retryButtonText}>Firebase Test</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      {/* Header with Delete All Button */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Notifications</Text>
+        {notifications.length > 0 && (
+          <TouchableOpacity
+            style={styles.deleteAllButton}
+            onPress={deleteAllNotifications}
+          >
+            <Icon name="delete-sweep" size={24} color="#f44336" />
+          </TouchableOpacity>
+        )}
+      </View>
+      
       <FlatList
         data={notifications}
         renderItem={renderNotification}
@@ -171,7 +475,7 @@ const styles = StyleSheet.create({
   notificationsList: {
     padding: 16,
   },
-  notificationItem: {
+  notificationContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
     padding: 16,
@@ -185,6 +489,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  notificationItem: {
+    flex: 1,
   },
   unreadNotification: {
     backgroundColor: '#f0f7ff',
@@ -219,6 +526,15 @@ const styles = StyleSheet.create({
     top: 16,
     right: 16,
   },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f44336',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -229,6 +545,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     marginTop: 8,
+  },
+  retryButton: {
+    backgroundColor: '#3949ab',
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  errorDetails: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+  },
+  errorDetailText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  deleteAllButton: {
+    padding: 8,
   },
 });
 

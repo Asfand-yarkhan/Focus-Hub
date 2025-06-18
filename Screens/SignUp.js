@@ -16,6 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { userStorage } from '../utils/userStorage';
 
 const SignUp = () => {
   const navigation = useNavigation();
@@ -100,7 +101,7 @@ const SignUp = () => {
         displayName: name
       });
 
-      // Save additional user data
+      // Prepare user data
       const userData = {
         name: name,
         email: email,
@@ -108,7 +109,9 @@ const SignUp = () => {
         university: university || '',
         degree: degree || '',
         semester: semester || '',
-        createdAt: firestore.FieldValue.serverTimestamp()
+        gender: 'male', // default gender
+        createdAt: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
       };
 
       // Save to Firestore
@@ -116,6 +119,31 @@ const SignUp = () => {
         .collection('users')
         .doc(newUser.user.uid)
         .set(userData);
+
+      // Save to AsyncStorage
+      await userStorage.saveUserProfile(userData);
+
+      // Initialize user settings
+      await userStorage.saveUserSettings({
+        notifications: true,
+        darkMode: false,
+        language: 'en'
+      });
+
+      // Initialize user preferences
+      await userStorage.saveUserPreferences({
+        studyGroups: [],
+        interests: [],
+        studyHours: 0
+      });
+
+      // Initialize user stats
+      await userStorage.saveUserStats({
+        studyHours: 0,
+        completedTasks: 0,
+        activeGoals: 0,
+        joinedGroups: 0
+      });
 
       Alert.alert('Success', 'Account created successfully!');
       navigation.navigate('HomeScreen');
