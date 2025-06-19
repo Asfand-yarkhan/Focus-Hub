@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { ThemeContext } from '../App';
 
 const ChatScreen = ({ route, navigation }) => {
   const { groupId, groupName } = route.params || { groupId: 'default', groupName: 'Group Chat' };
@@ -22,6 +23,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { darkMode } = useContext(ThemeContext);
   
   const flatListRef = useRef(null);
 
@@ -80,11 +82,18 @@ const ChatScreen = ({ route, navigation }) => {
       headerTitle: groupName,
       headerRight: () => (
         <TouchableOpacity style={styles.headerButton}>
-          <Icon name="info" size={24} color="#3949ab" />
+          <Icon name="info" size={24} color={darkMode ? '#90caf9' : '#3949ab'} />
         </TouchableOpacity>
       ),
+      headerStyle: {
+        backgroundColor: darkMode ? '#181818' : '#3949ab',
+      },
+      headerTintColor: darkMode ? '#fff' : '#fff',
+      headerTitleStyle: {
+        color: darkMode ? '#fff' : '#fff',
+      },
     });
-  }, [navigation, groupName]);
+  }, [navigation, groupName, darkMode]);
 
   const sendMessage = async () => {
     if (message.trim() === '') return;
@@ -155,10 +164,10 @@ const ChatScreen = ({ route, navigation }) => {
             style={styles.avatar}
           />
         </View>
-        <View style={styles.messageContent}>
-          <Text style={styles.senderName}>{item.senderName}</Text>
-          <Text style={styles.messageText}>{item.text}</Text>
-          <Text style={styles.timestamp}>
+        <View style={[styles.messageContent, { backgroundColor: isYou ? (darkMode ? '#3949ab' : '#e3f0ff') : (darkMode ? '#232323' : '#fff') }]}>
+          <Text style={[styles.senderName, { color: darkMode ? '#90caf9' : '#666' }]}>{item.senderName}</Text>
+          <Text style={[styles.messageText, { color: darkMode ? '#fff' : '#333' }]}>{item.text}</Text>
+          <Text style={[styles.timestamp, { color: darkMode ? '#bbb' : '#999' }]}>
             {item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
           </Text>
         </View>
@@ -175,7 +184,7 @@ const ChatScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#fff' }]}>
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -190,17 +199,17 @@ const ChatScreen = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { backgroundColor: darkMode ? '#232323' : '#fff', borderTopColor: darkMode ? '#333' : '#e0e0e0' }]}>
           <TouchableOpacity style={styles.attachButton}>
-            <Icon name="attach-file" size={24} color="#3949ab" />
+            <Icon name="attach-file" size={24} color={darkMode ? '#90caf9' : '#3949ab'} />
           </TouchableOpacity>
           
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: darkMode ? '#181818' : '#f5f5f5', color: darkMode ? '#fff' : '#000' }]}
             value={message}
             onChangeText={setMessage}
             placeholder="Type a message..."
-            placeholderTextColor="#666"
+            placeholderTextColor={darkMode ? '#bbb' : '#666'}
             multiline
             maxLength={500}
           />
@@ -210,7 +219,7 @@ const ChatScreen = ({ route, navigation }) => {
             onPress={sendMessage}
             disabled={!message.trim()}
           >
-            <Icon name="send" size={24} color={message.trim() ? '#3949ab' : '#ccc'} />
+            <Icon name="send" size={24} color={message.trim() ? (darkMode ? '#90caf9' : '#3949ab') : '#ccc'} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

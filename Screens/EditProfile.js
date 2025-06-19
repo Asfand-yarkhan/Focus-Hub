@@ -11,15 +11,17 @@ import {
   Image,
   Platform
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { auth, db as firestore } from '../firebase/config';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import { launchImageLibrary } from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
 import firebase from '@react-native-firebase/app';
 
 const EditProfile = () => {
   const navigation = useNavigation();
+  const route = useRoute();
   const [loading, setLoading] = useState(true);
   const [gender, setGender] = useState('male');
   const [profileImage, setProfileImage] = useState(null);
@@ -39,30 +41,41 @@ const EditProfile = () => {
   useEffect(() => {
     const loadUserData = async () => {
       try {
-        const currentUser = auth.currentUser;
+        const currentUser = auth().currentUser;
+        let userData = null;
         if (!currentUser) {
-          Alert.alert('Error', 'Please log in to continue');
-          navigation.navigate('Login');
-          return;
+          // Try to use route.params.user as fallback
+          if (route.params && route.params.user) {
+            userData = route.params.user;
+          } else {
+            Alert.alert('Error', 'Could not load your profile. Please try again.');
+            setLoading(false);
+            return;
+          }
+        } else {
+          const userDoc = await firestore
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
+          if (userDoc.exists) {
+            userData = userDoc.data();
+          } else if (route.params && route.params.user) {
+            userData = route.params.user;
+          } else {
+            Alert.alert('Error', 'Could not load your profile. Please try again.');
+            setLoading(false);
+            return;
+          }
         }
-
-        const userDoc = await firestore
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
-
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          setName(userData.name || '');
-          setEmail(userData.email || currentUser.email || '');
-          setPhone(userData.phone || '');
-          setGender(userData.gender || 'male');
-          setDateOfBirth(userData.dateOfBirth || '');
-          setUniversity(userData.university || '');
-          setDegree(userData.degree || '');
-          setSemester(userData.semester || '');
-          setProfileImage(userData.profilePicture || null);
-        }
+        setName(userData.name || '');
+        setEmail(userData.email || '');
+        setPhone(userData.phone || '');
+        setGender(userData.gender || 'male');
+        setDateOfBirth(userData.dateOfBirth || '');
+        setUniversity(userData.university || '');
+        setDegree(userData.degree || '');
+        setSemester(userData.semester || '');
+        setProfileImage(userData.profilePicture || null);
         setLoading(false);
       } catch (error) {
         console.error('Error loading profile:', error);
@@ -70,9 +83,8 @@ const EditProfile = () => {
         setLoading(false);
       }
     };
-
     loadUserData();
-  }, [navigation]);
+  }, [navigation, route.params]);
 
   const handleGenderSelect = (selectedGender) => {
     setGender(selectedGender);
@@ -106,7 +118,7 @@ const EditProfile = () => {
     setUploading(true);
     setUploadProgress(0);
 
-    const currentUser = auth.currentUser;
+    const currentUser = auth().currentUser;
     if (!currentUser) {
       Alert.alert('Error', 'You must be logged in to upload a profile picture.');
       setUploading(false);
@@ -146,10 +158,9 @@ const EditProfile = () => {
 
     setLoading(true);
     try {
-      const currentUser = auth.currentUser;
+      const currentUser = auth().currentUser;
       if (!currentUser) {
         Alert.alert('Error', 'Please log in to continue');
-        navigation.navigate('Login');
         return;
       }
 
@@ -395,11 +406,13 @@ const styles = StyleSheet.create({
     padding: 8,
     minWidth: 60,
     alignItems: 'center',
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
   },
   saveButtonText: {
     color: '#fff',
+    fontWeight: 'bold',
     fontSize: 16,
-    fontWeight: '600',
   },
   formContainer: {
     padding: 16,

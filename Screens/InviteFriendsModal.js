@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useContext } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, ActivityIndicator, Image, Alert, TextInput } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import { ThemeContext } from '../App';
 
 const InviteFriendsModal = ({ visible, onClose }) => {
   const [users, setUsers] = useState([]);
@@ -12,6 +13,7 @@ const InviteFriendsModal = ({ visible, onClose }) => {
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [friends, setFriends] = useState([]);
   const [showingFriends, setShowingFriends] = useState(false);
+  const { darkMode } = useContext(ThemeContext);
 
   // Fetch friends list
   const fetchFriends = async () => {
@@ -145,32 +147,28 @@ const InviteFriendsModal = ({ visible, onClose }) => {
     try {
       const currentUser = auth().currentUser;
       if (!currentUser) {
-        console.log('No current user found for showing friends');
         setFilteredUsers([]);
         setLoading(false);
         setShowingFriends(true);
         return;
       }
-      
-      console.log('Fetching friends list for display...');
       const friendsList = await fetchFriends();
-      
       if (friendsList.length === 0) {
-        console.log('No friends found');
         setFilteredUsers([]);
         setLoading(false);
         setShowingFriends(true);
         return;
       }
-      
-      console.log('Fetching friends data from Firestore...');
-      const usersSnapshot = await firestore()
-        .collection('users')
-        .where(firestore.FieldPath.documentId(), 'in', friendsList)
-        .get();
-      
-      const usersData = usersSnapshot.docs.map(doc => {
-        try {
+      let usersData = [];
+      // Firestore 'in' query limit is 10, so fetch in batches if needed
+      const batchSize = 10;
+      for (let i = 0; i < friendsList.length; i += batchSize) {
+        const batchIds = friendsList.slice(i, i + batchSize);
+        const usersSnapshot = await firestore()
+          .collection('users')
+          .where(firestore.FieldPath.documentId(), 'in', batchIds)
+          .get();
+        usersData = usersData.concat(usersSnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
@@ -179,19 +177,13 @@ const InviteFriendsModal = ({ visible, onClose }) => {
             email: data.email || '',
             ...data
           };
-        } catch (docError) {
-          console.error('Error processing friend document:', doc.id, docError);
-          return null;
-        }
-      }).filter(user => user !== null); // Remove any null entries
-      
-      console.log('Found friends:', usersData.length);
+        }));
+      }
+      setUsers(usersData);
       setFilteredUsers(usersData);
       setLoading(false);
       setShowingFriends(true);
     } catch (error) {
-      console.error('Error showing friends:', error);
-      console.error('Error details:', error.message, error.code);
       setFilteredUsers([]);
       setLoading(false);
       setShowingFriends(true);
@@ -269,52 +261,53 @@ const InviteFriendsModal = ({ visible, onClose }) => {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Invite Friends</Text>
+      <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#f5f5f5' }]}>
+        <View style={[styles.header, { backgroundColor: darkMode ? '#232323' : 'transparent' }]}>
+          <Text style={[styles.title, { color: darkMode ? '#fff' : '#333' }]}>Invite Friends</Text>
           <TouchableOpacity style={styles.refreshButton} onPress={showingFriends ? showMyFriends : fetchUsers}>
-            <Icon name="refresh" size={24} color="#3949ab" />
+            <Icon name="refresh" size={24} color={darkMode ? '#90caf9' : '#3949ab'} />
           </TouchableOpacity>
         </View>
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { backgroundColor: darkMode ? '#232323' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#333' : '#ddd' }]}
           placeholder="Search users..."
+          placeholderTextColor={darkMode ? '#bbb' : '#666'}
           value={search}
           onChangeText={setSearch}
         />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
           <TouchableOpacity
-            style={{ backgroundColor: '#3949ab', padding: 10, borderRadius: 8, flex: 1, marginRight: 5 }}
+            style={{ backgroundColor: darkMode ? '#3949ab' : '#3949ab', padding: 10, borderRadius: 8, flex: 1, marginRight: 5 }}
             onPress={fetchUsers}
           >
             <Text style={{ color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>Suggestions</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ backgroundColor: '#3949ab', padding: 10, borderRadius: 8, flex: 1, marginLeft: 5 }}
+            style={{ backgroundColor: darkMode ? '#3949ab' : '#3949ab', padding: 10, borderRadius: 8, flex: 1, marginLeft: 5 }}
             onPress={showMyFriends}
           >
             <Text style={{ color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>My Friends</Text>
           </TouchableOpacity>
         </View>
         {loading ? (
-          <ActivityIndicator size="large" color="#3949ab" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={darkMode ? '#90caf9' : '#3949ab'} style={{ marginTop: 40 }} />
         ) : (
           <FlatList
             data={filteredUsers}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
-              <View style={styles.userItem}>
+              <View style={[styles.userItem, { backgroundColor: darkMode ? '#232323' : '#fff' }]}>
                 <Image
                   source={item.profilePicture ? { uri: item.profilePicture } : require('../Assets/images/male.jpg')}
-                  style={styles.avatar}
+                  style={[styles.avatar, { backgroundColor: darkMode ? '#232323' : '#eee' }]}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>{item.name}</Text>
-                  <Text style={styles.userEmail}>{item.email}</Text>
+                  <Text style={[styles.userName, { color: darkMode ? '#fff' : '#333' }]}>{item.name}</Text>
+                  <Text style={[styles.userEmail, { color: darkMode ? '#bbb' : '#666' }]}>{item.email}</Text>
                 </View>
                 {!showingFriends && (
                   <TouchableOpacity
-                    style={styles.addButton}
+                    style={[styles.addButton, { backgroundColor: darkMode ? '#3949ab' : '#3949ab' }]}
                     onPress={() => sendRequest(item)}
                     disabled={sending === item.id}
                   >
@@ -323,10 +316,10 @@ const InviteFriendsModal = ({ visible, onClose }) => {
                 )}
               </View>
             )}
-            ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 40, color: '#666' }}>{showingFriends ? 'No friends found.' : 'No suggestions found.'}</Text>}
+            ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 40, color: darkMode ? '#bbb' : '#666' }}>{showingFriends ? 'No friends found.' : 'No suggestions found.'}</Text>}
           />
         )}
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <TouchableOpacity style={[styles.closeButton, { backgroundColor: darkMode ? '#3949ab' : '#3949ab' }]} onPress={onClose}>
           <Text style={styles.closeButtonText}>Close</Text>
         </TouchableOpacity>
       </View>
@@ -337,7 +330,6 @@ const InviteFriendsModal = ({ visible, onClose }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
     padding: 16,
     paddingTop: 40,
   },
@@ -350,7 +342,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
     flex: 1,
   },
   searchInput: {

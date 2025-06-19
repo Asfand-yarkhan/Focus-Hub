@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -13,12 +13,14 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import firebase from '@react-native-firebase/app';
+import { ThemeContext } from '../App';
 
 const NotificationScreen = ({ navigation }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
   const [error, setError] = useState(null);
+  const { darkMode } = useContext(ThemeContext);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -237,7 +239,7 @@ const NotificationScreen = ({ navigation }) => {
   const renderNotification = ({ item }) => {
     console.log('Rendering notification:', item);
     return (
-      <View style={styles.notificationContainer}>
+      <View style={[styles.notificationContainer, { backgroundColor: darkMode ? '#232323' : '#fff' }]}>
         <TouchableOpacity
           style={[styles.notificationItem, !item.read && styles.unreadNotification]}
           onPress={() => handleNotificationPress(item)}
@@ -250,8 +252,8 @@ const NotificationScreen = ({ navigation }) => {
             />
           </View>
           <View style={styles.notificationContent}>
-            <Text style={styles.notificationText}>{item.message}</Text>
-            <Text style={styles.notificationTime}>
+            <Text style={[styles.notificationText, { color: darkMode ? '#fff' : '#333' }]}>{item.message}</Text>
+            <Text style={[styles.notificationTime, { color: darkMode ? '#bbb' : '#666' }]}>
               {item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}
             </Text>
           </View>
@@ -280,28 +282,62 @@ const NotificationScreen = ({ navigation }) => {
 
   const acceptFriendRequest = async (requestId, fromUserId) => {
     try {
+      console.log('Accepting friend request from notification:', requestId, 'from user:', fromUserId);
+      
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'You must be logged in to accept friend requests');
+        return;
+      }
+
+      if (!requestId || !fromUserId) {
+        Alert.alert('Error', 'Invalid request data');
+        return;
+      }
+
+      // Update friend request status
       await firestore().collection('friend_requests').doc(requestId).update({
         status: 'accepted',
         updatedAt: firestore.FieldValue.serverTimestamp()
       });
-      // Add to each other's friends subcollection
-      await firestore().collection('users').doc(auth().currentUser.uid)
-        .collection('friends').doc(fromUserId).set({ since: new Date() });
+      console.log('Friend request status updated');
+
+      // Add to current user's friends subcollection
+      await firestore().collection('users').doc(currentUser.uid)
+        .collection('friends').doc(fromUserId).set({ 
+          since: firestore.FieldValue.serverTimestamp(),
+          addedAt: new Date()
+        });
+      console.log('Added to current user friends');
+
+      // Add current user to the other user's friends subcollection
       await firestore().collection('users').doc(fromUserId)
-        .collection('friends').doc(auth().currentUser.uid).set({ since: new Date() });
+        .collection('friends').doc(currentUser.uid).set({ 
+          since: firestore.FieldValue.serverTimestamp(),
+          addedAt: new Date()
+        });
+      console.log('Added to other user friends');
+
       // Send notification to sender
       await firestore().collection('notifications').add({
         userId: fromUserId,
-        senderId: auth().currentUser.uid,
-        senderName: auth().currentUser.displayName || 'Anonymous User',
+        senderId: currentUser.uid,
+        senderName: currentUser.displayName || 'Anonymous User',
         type: 'friend_accept',
-        message: `${auth().currentUser.displayName || 'Someone'} accepted your friend request`,
+        message: `${currentUser.displayName || 'Someone'} accepted your friend request`,
         timestamp: firestore.FieldValue.serverTimestamp(),
         read: false
       });
+      console.log('Notification sent');
+
       Alert.alert('Success', 'Friend request accepted!');
+      
+      // Refresh notifications
+      fetchNotifications();
     } catch (error) {
-      Alert.alert('Error', 'Failed to accept request: ' + (error.message || ''));
+      console.error('Error accepting friend request:', error);
+      console.error('Error details:', error.message, error.code);
+      Alert.alert('Error', 'Failed to accept request: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -406,41 +442,21 @@ const NotificationScreen = ({ navigation }) => {
         >
           <Text style={styles.retryButtonText}>Retry Connection</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.retryButton, { backgroundColor: '#666', marginTop: 8 }]}
-          onPress={() => {
-            console.log('=== FIREBASE DEBUG INFO ===');
-            console.log('Firebase apps:', firebase.apps.length);
-            console.log('Current app:', firebase.app().name);
-            console.log('Auth state:', auth().currentUser);
-            console.log('Firestore instance:', firestore().app.name);
-          }}
-        >
-          <Text style={styles.retryButtonText}>Debug Info</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.retryButton, { backgroundColor: '#9c27b0', marginTop: 8 }]}
-          onPress={() => navigation.navigate('FirebaseTest')}
-        >
-          <Text style={styles.retryButtonText}>Firebase Test</Text>
-        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#f5f5f5' }]}>
       {/* Header with Delete All Button */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Notifications</Text>
+      <View style={[styles.header, { backgroundColor: darkMode ? '#232323' : '#fff', borderBottomColor: darkMode ? '#333' : '#eee' }]}>
+        <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#333' }]}>Notifications</Text>
         {notifications.length > 0 && (
           <TouchableOpacity
             style={styles.deleteAllButton}
             onPress={deleteAllNotifications}
           >
-            <Icon name="delete-sweep" size={24} color="#f44336" />
+            <Icon name="delete-sweep" size={24} color={darkMode ? '#ff5252' : '#f44336'} />
           </TouchableOpacity>
         )}
       </View>
@@ -451,9 +467,9 @@ const NotificationScreen = ({ navigation }) => {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.notificationsList}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="notifications-off" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>No notifications yet</Text>
+          <View style={[styles.emptyContainer, { backgroundColor: darkMode ? '#232323' : '#fff' }]}>
+            <Icon name="notifications-off" size={48} color={darkMode ? '#333' : '#ccc'} />
+            <Text style={[styles.emptyText, { color: darkMode ? '#bbb' : '#666' }]}>No notifications yet</Text>
           </View>
         }
       />
@@ -464,13 +480,11 @@ const NotificationScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   },
   notificationsList: {
     padding: 16,

@@ -1,15 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { View, Text, Switch, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage';
+import { ThemeContext } from '../App';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SettingsScreen = ({ navigation }) => {
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, setDarkMode } = useContext(ThemeContext);
   const [deleting, setDeleting] = useState(false);
 
-  const toggleDarkMode = () => {
+  // Load dark mode from AsyncStorage on mount
+  useEffect(() => {
+    (async () => {
+      const settings = await AsyncStorage.getItem('@focushub_user_settings');
+      if (settings) {
+        const parsed = JSON.parse(settings);
+        if (typeof parsed.darkMode === 'boolean') setDarkMode(parsed.darkMode);
+      }
+    })();
+  }, [setDarkMode]);
+
+  const toggleDarkMode = async () => {
     setDarkMode(!darkMode);
+    await AsyncStorage.mergeItem(
+      '@focushub_user_settings',
+      JSON.stringify({ darkMode: !darkMode })
+    );
     Alert.alert('Theme Changed', `App is now in ${!darkMode ? 'Dark' : 'Light'} Mode`);
   };
 
@@ -74,14 +91,14 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
+    <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#f5f5f5' }]}>
+      <Text style={[styles.title, { color: darkMode ? '#fff' : '#333' }]}>Settings</Text>
       <View style={styles.settingRow}>
-        <Text style={styles.settingLabel}>Dark Mode</Text>
-        <Switch value={darkMode} onValueChange={toggleDarkMode} />
+        <Text style={[styles.settingLabel, { color: darkMode ? '#fff' : '#333' }]}>Dark Mode</Text>
+        <Switch value={darkMode} onValueChange={toggleDarkMode} trackColor={{ false: '#767577', true: '#81b0ff' }} thumbColor={darkMode ? '#3949ab' : '#f4f3f4'} />
       </View>
       <TouchableOpacity
-        style={styles.deleteButton}
+        style={[styles.deleteButton, { backgroundColor: darkMode ? '#ff5252' : '#f44336' }]}
         onPress={handleDeleteAccount}
         disabled={deleting}
       >
@@ -96,11 +113,11 @@ const SettingsScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 24 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32, color: '#333' },
+  container: { flex: 1, padding: 24 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 32 },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  settingLabel: { fontSize: 18, color: '#333' },
-  deleteButton: { backgroundColor: '#f44336', padding: 16, borderRadius: 8, marginTop: 40 },
+  settingLabel: { fontSize: 18 },
+  deleteButton: { padding: 16, borderRadius: 8, marginTop: 40 },
   deleteButtonText: { color: '#fff', fontWeight: 'bold', textAlign: 'center', fontSize: 16 }
 });
 

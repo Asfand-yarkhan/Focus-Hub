@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image, Alert, ActivityIndicator, Button } from 'react-native';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, TextInput, Image, Alert, ActivityIndicator, Button, ScrollView } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Feed from './Feed';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import InviteFriendsModal from './InviteFriendsModal';
+import { ThemeContext } from '../App';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -18,6 +19,8 @@ const HomeScreen = () => {
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [friendCount, setFriendCount] = useState(0);
+  const [unreadChats, setUnreadChats] = useState(0);
+  const { darkMode } = useContext(ThemeContext);
 
   // Cache user profile data
   const cacheUserProfile = useCallback((userId, profileData) => {
@@ -121,6 +124,30 @@ const HomeScreen = () => {
       }, error => {
         console.error('Error listening to notifications:', error);
         Alert.alert('Error', 'Error listening to notifications: ' + error.message);
+      });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for unread chats/messages
+  useEffect(() => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+
+    const unsubscribe = firestore()
+      .collection('chats')
+      .where('participants', 'array-contains', currentUser.uid)
+      .onSnapshot(snapshot => {
+        let unreadCount = 0;
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.unreadFor && data.unreadFor.includes(currentUser.uid)) {
+            unreadCount++;
+          }
+        });
+        setUnreadChats(unreadCount);
+      }, error => {
+        console.error('Error listening to chats:', error);
       });
 
     return () => unsubscribe();
@@ -265,11 +292,12 @@ const HomeScreen = () => {
       await firestore().collection('posts').add({
         userId: currentUser.uid,
         userName: currentUser.displayName || 'Anonymous User',
-        userPhotoURL: currentUser.photoURL || null,
-        text: postText.trim(),
-        timestamp: firestore.FieldValue.serverTimestamp(),
-        likes: 0,
-        comments: 0
+        userProfilePicture: currentUser.photoURL || null,
+        userGender: userProfile?.gender || 'male',
+        content: postText.trim(),
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        likedBy: [],
+        comments: []
       });
 
       setPostText('');
@@ -280,23 +308,7 @@ const HomeScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Temporary Debug Button */}
-      <TouchableOpacity 
-        style={{ 
-          position: 'absolute', 
-          top: 50, 
-          right: 20, 
-          backgroundColor: '#FF6B6B', 
-          padding: 10, 
-          borderRadius: 20,
-          zIndex: 1000
-        }}
-        onPress={debugFriendsSystem}
-      >
-        <Text style={{ color: '#fff', fontSize: 12 }}>Debug</Text>
-      </TouchableOpacity>
-      
+    <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#fff' }]}>
       <ImageBackground 
         source={require('../Assets/images/welcome.jpg')}
         style={styles.header}
@@ -322,56 +334,72 @@ const HomeScreen = () => {
             </TouchableOpacity>
           </View>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>Welcome {currentUserState?.displayName}</Text>
+            <Text style={[styles.title, { color: darkMode ? '#fff' : '#333' }]}>Welcome {currentUserState?.displayName}</Text>
           </View>
         </View>
       </ImageBackground>
-
-      {/* Post Creation Section */}
-      <View style={styles.postCreationContainer}>
-        <View style={styles.postInputContainer}>
-          <View style={styles.postHeader}>
-            <Image
-              source={
-                userProfile?.profilePicture
-                  ? { uri: userProfile.profilePicture }
-                  : userProfile?.gender === 'female'
-                  ? require('../Assets/images/female.jpg')
-                  : require('../Assets/images/male.jpg')
-              }
-              style={styles.postUserImage}
-            />
-            <TextInput
-              style={styles.postInput}
-              placeholder="Share your thoughts..."
-              placeholderTextColor="#666"
-              multiline
-              value={postText}
-              onChangeText={setPostText}
-            />
-          </View>
-        </View>
-        <View style={styles.postActions}>
-          <TouchableOpacity style={styles.postActionButton}>
-            <Icon name="paperclip" size={24} color="#666" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.postActionButton}>
-            <Icon name="image" size={24} color="#666" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.postButton, !postText.trim() && styles.postButtonDisabled]}
-            onPress={handlePost}
-            disabled={!postText.trim()}
-          >
-            <Text style={[styles.postButtonText, !postText.trim() && styles.postButtonTextDisabled]}>
-              Post
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
+      {activeScreen === 'Feed' && (
+        <Feed
+          postCreationComponent={
+            <View style={[styles.postCreationContainer, { backgroundColor: darkMode ? '#232323' : '#fff', borderBottomColor: darkMode ? '#333' : '#eee' }]}> 
+              <View style={styles.postInputContainer}>
+                <View style={styles.postHeader}>
+                  <Image
+                    source={
+                      userProfile?.profilePicture
+                        ? { uri: userProfile.profilePicture }
+                        : userProfile?.gender === 'female'
+                        ? require('../Assets/images/female.jpg')
+                        : require('../Assets/images/male.jpg')
+                    }
+                    style={styles.postUserImage}
+                  />
+                  <View style={{ flex: 1, position: 'relative', justifyContent: 'center' }}>
+                    {postText.length === 0 && (
+                      <Text
+                        style={{
+                          position: 'absolute',
+                          left: 16,
+                          top: 16,
+                          color: darkMode ? '#bbb' : '#666',
+                          fontSize: 12,
+                          zIndex: 1,
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        Share your thoughts...
+                      </Text>
+                    )}
+                    <TextInput
+                      style={[styles.postInput, { backgroundColor: darkMode ? '#181818' : '#f8f8f8', color: darkMode ? '#fff' : '#333', fontSize: 18, paddingVertical: 16, minHeight: 80 }]}
+                      multiline
+                      value={postText}
+                      onChangeText={setPostText}
+                    />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.postActions}>
+                <TouchableOpacity style={styles.postActionButton}>
+                  <Icon name="paperclip" size={24} color={darkMode ? '#90caf9' : '#666'} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.postActionButton}>
+                  <Icon name="image" size={24} color={darkMode ? '#90caf9' : '#666'} />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.postButton, !postText.trim() && styles.postButtonDisabled, { backgroundColor: darkMode ? '#3949ab' : '#007AFF', borderColor: darkMode ? '#3949ab' : '#007AFF' }]}
+                  onPress={handlePost}
+                  disabled={!postText.trim()}
+                >
+                  <Text style={[styles.postButtonText, !postText.trim() && styles.postButtonTextDisabled, { color: '#fff' }]}>Post</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
+        />
+      )}
       {/* Navigation Buttons */}
-      <View style={styles.navigationContainer}>
+      <View style={[styles.navigationContainer, { backgroundColor: darkMode ? '#232323' : '#fff', borderTopColor: darkMode ? '#333' : '#eee' }]}>
         <TouchableOpacity
           style={[styles.navButton, activeScreen === 'Feed' && styles.activeNavButton]}
           onPress={() => handleNavigation('Feed')}
@@ -379,11 +407,9 @@ const HomeScreen = () => {
           <Icon
             name="home"
             size={24}
-            color={activeScreen === 'Feed' ? '#007AFF' : '#666'}
+            color={activeScreen === 'Feed' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666')}
           />
-          <Text style={[styles.navText, activeScreen === 'Feed' && styles.activeNavText]}>
-            Feed
-          </Text>
+          <Text style={[styles.navText, activeScreen === 'Feed' && styles.activeNavText, { color: activeScreen === 'Feed' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666') }]}>Feed</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -393,11 +419,9 @@ const HomeScreen = () => {
           <Icon
             name="compass"
             size={24}
-            color={activeScreen === 'Explore' ? '#007AFF' : '#666'}
+            color={activeScreen === 'Explore' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666')}
           />
-          <Text style={[styles.navText, activeScreen === 'Explore' && styles.activeNavText]}>
-            Explore
-          </Text>
+          <Text style={[styles.navText, activeScreen === 'Explore' && styles.activeNavText, { color: activeScreen === 'Explore' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666') }]}>Explore</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -407,32 +431,14 @@ const HomeScreen = () => {
           <Icon
             name="comments"
             size={24}
-            color={activeScreen === 'Chat' ? '#007AFF' : '#666'}
+            color={activeScreen === 'Chat' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666')}
           />
-          <Text style={[styles.navText, activeScreen === 'Chat' && styles.activeNavText]}>
-            Chat
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.navButton, activeScreen === 'Friends' && styles.activeNavButton]}
-          onPress={() => setInviteModalVisible(true)}
-        >
-          <Icon
-            name="people"
-            size={24}
-            color={activeScreen === 'Friends' ? '#007AFF' : '#666'}
-          />
-          {friendCount > 0 && (
-            <View style={styles.friendBadge}>
-              <Text style={styles.friendBadgeText}>
-                {friendCount > 99 ? '99+' : friendCount}
-              </Text>
+          {unreadChats > 0 && (
+            <View style={styles.chatBadge}>
+              <Text style={styles.chatBadgeText}>{unreadChats > 99 ? '99+' : unreadChats}</Text>
             </View>
           )}
-          <Text style={[styles.navText, activeScreen === 'Friends' && styles.activeNavText]}>
-            Friends
-          </Text>
+          <Text style={[styles.navText, activeScreen === 'Chat' && styles.activeNavText, { color: activeScreen === 'Chat' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666') }]}>Chat</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -442,15 +448,11 @@ const HomeScreen = () => {
           <Icon
             name="user"
             size={24}
-            color={activeScreen === 'Profile' ? '#007AFF' : '#666'}
+            color={activeScreen === 'Profile' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666')}
           />
-          <Text style={[styles.navText, activeScreen === 'Profile' && styles.activeNavText]}>
-            Profile
-          </Text>
+          <Text style={[styles.navText, activeScreen === 'Profile' && styles.activeNavText, { color: activeScreen === 'Profile' ? (darkMode ? '#90caf9' : '#007AFF') : (darkMode ? '#bbb' : '#666') }]}>Profile</Text>
         </TouchableOpacity>
       </View>
-
-      {activeScreen === 'Feed' && <Feed />}
       <InviteFriendsModal 
         visible={inviteModalVisible} 
         onClose={() => {
@@ -485,10 +487,15 @@ const styles = StyleSheet.create({
   },
   inviteButton: {
     backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 8,
+  },
+  inviteButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   notificationButton: {
     backgroundColor: '#007AFF',
@@ -511,16 +518,11 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: -1, height: 1 },
     textShadowRadius: 5
   },
-  inviteButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
   postCreationContainer: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    padding: 0,
+    borderBottomWidth: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
   },
   postInputContainer: {
     marginBottom: 12,
@@ -579,8 +581,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
   },
   navButton: {
     alignItems: 'center',
@@ -620,7 +620,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-  friendBadge: {
+  chatBadge: {
     position: 'absolute',
     top: 0,
     right: 0,
@@ -632,7 +632,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  friendBadgeText: {
+  chatBadgeText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { useFocusEffect } from '@react-navigation/native';
+import { ThemeContext } from '../App';
 
 const ChatList = ({ navigation }) => {
   const [chats, setChats] = useState([]);
@@ -21,6 +22,7 @@ const ChatList = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [friends, setFriends] = useState([]);
   const [filteredFriends, setFilteredFriends] = useState([]);
+  const { darkMode } = useContext(ThemeContext);
 
   // Create friends subcollection if it doesn't exist
   const createFriendsSubcollection = async () => {
@@ -280,12 +282,14 @@ const ChatList = ({ navigation }) => {
 
     const otherUserId = item.participants.find(id => id !== currentUser.uid);
     const otherUserInfo = item.participantsInfo && item.participantsInfo[otherUserId];
-
     if (!otherUserInfo) return null;
+
+    // Check for unread messages
+    const hasUnread = item.unreadFor && item.unreadFor.includes(currentUser.uid);
 
     return (
       <TouchableOpacity
-        style={styles.chatItem}
+        style={[styles.chatItem, { backgroundColor: darkMode ? '#232323' : '#fff' }]}
         onPress={() => navigation.navigate('OneOnOneChat', {
           chatId: item.id,
           otherUser: {
@@ -304,12 +308,12 @@ const ChatList = ({ navigation }) => {
           style={styles.avatar}
         />
         <View style={styles.chatInfo}>
-          <Text style={styles.chatName}>{otherUserInfo.name || 'User'}</Text>
-          <Text style={styles.lastMessage} numberOfLines={1}>
+          <Text style={[styles.chatName, { color: hasUnread ? (darkMode ? '#90caf9' : '#3949ab') : (darkMode ? '#fff' : '#333'), fontWeight: hasUnread ? 'bold' : 'normal' }]}>{otherUserInfo.name || 'User'}</Text>
+          <Text style={[styles.lastMessage, { color: hasUnread ? (darkMode ? '#90caf9' : '#3949ab') : (darkMode ? '#bbb' : '#666'), fontWeight: hasUnread ? 'bold' : 'normal' }]} numberOfLines={1}>
             {item.lastMessage || 'No messages yet'}
           </Text>
         </View>
-        <Text style={styles.time}>
+        <Text style={[styles.time, { color: darkMode ? '#bbb' : '#999' }]}>
           {item.lastMessageTime
             ? new Date(item.lastMessageTime.toDate()).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -323,7 +327,7 @@ const ChatList = ({ navigation }) => {
 
   const renderUserItem = ({ item }) => (
     <TouchableOpacity
-      style={styles.userItem}
+      style={[styles.userItem, { backgroundColor: darkMode ? '#232323' : '#fff' }]}
       onPress={() => startNewChat(item)}
     >
       <Image
@@ -335,13 +339,13 @@ const ChatList = ({ navigation }) => {
         style={styles.avatar}
       />
       <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.name || 'User'}</Text>
+        <Text style={[styles.userName, { color: darkMode ? '#fff' : '#333' }]}>{item.name || 'User'}</Text>
         <View style={styles.friendStatus}>
           <Icon name="person" size={16} color="#4CAF50" />
-          <Text style={styles.friendStatusText}>Friend</Text>
+          <Text style={[styles.friendStatusText, { color: darkMode ? '#bbb' : '#666' }]}>Friend</Text>
         </View>
       </View>
-      <Icon name="chat" size={24} color="#007AFF" />
+      <Icon name="chat" size={24} color={darkMode ? '#90caf9' : '#007AFF'} />
     </TouchableOpacity>
   );
 
@@ -354,12 +358,13 @@ const ChatList = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={24} color="#666" style={styles.searchIcon} />
+    <View style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#fff' }]}>
+      <View style={[styles.searchContainer, { backgroundColor: darkMode ? '#232323' : '#f5f5f5' }]}>
+        <Icon name="search" size={24} color={darkMode ? '#bbb' : '#666'} style={styles.searchIcon} />
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: darkMode ? '#fff' : '#000', fontSize: 16, paddingVertical: 10 }]}
           placeholder="Search friends..."
+          placeholderTextColor={darkMode ? '#bbb' : '#666'}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo, useContext } from 'react';
 import { 
   View, 
   Text, 
@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { userStorage } from '../utils/userStorage';
+import { ThemeContext } from '../App';
 
 const Profile = ({ route }) => {
   const navigation = useNavigation();
@@ -26,6 +27,7 @@ const Profile = ({ route }) => {
   const [friendRequestStatus, setFriendRequestStatus] = useState(null); // 'pending', 'accepted', 'none'
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestId, setRequestId] = useState(null); // Add this to track the request ID
+  const { darkMode } = useContext(ThemeContext);
 
   const fetchUserData = useCallback(async (forceRefresh = false) => {
     try {
@@ -117,6 +119,8 @@ const Profile = ({ route }) => {
 
   const checkFriendRequestStatus = async (currentUserId, targetUserId) => {
     try {
+      console.log('Checking friend request status between:', currentUserId, 'and', targetUserId);
+      
       // Check if there's a pending request from current user to target user
       const outgoingRequest = await firestore()
         .collection('friend_requests')
@@ -126,8 +130,9 @@ const Profile = ({ route }) => {
         .get();
 
       if (!outgoingRequest.empty) {
+        console.log('Found outgoing pending request');
         setFriendRequestStatus('pending');
-        setRequestId(outgoingRequest.docs[0].id); // Store the request ID
+        setRequestId(outgoingRequest.docs[0].id);
         return;
       }
 
@@ -140,29 +145,32 @@ const Profile = ({ route }) => {
         .get();
 
       if (!incomingRequest.empty) {
+        console.log('Found incoming pending request');
         setFriendRequestStatus('received');
-        setRequestId(incomingRequest.docs[0].id); // Store the request ID
+        setRequestId(incomingRequest.docs[0].id);
         return;
       }
 
-      // Check if they're already friends
-      const acceptedRequest = await firestore()
+      // Check if they're already friends (accepted requests)
+      const acceptedRequests = await firestore()
         .collection('friend_requests')
         .where('status', '==', 'accepted')
         .get();
 
-      const isFriend = acceptedRequest.docs.some(doc => {
+      const isFriend = acceptedRequests.docs.some(doc => {
         const data = doc.data();
         return (data.from === currentUserId && data.to === targetUserId) ||
                (data.from === targetUserId && data.to === currentUserId);
       });
 
       if (isFriend) {
+        console.log('Users are already friends');
         setFriendRequestStatus('accepted');
-        setRequestId(null); // Clear request ID for accepted requests
+        setRequestId(null);
       } else {
+        console.log('No friend request found');
         setFriendRequestStatus('none');
-        setRequestId(null); // Clear request ID when no request exists
+        setRequestId(null);
       }
     } catch (error) {
       console.error('Error checking friend request status:', error);
@@ -237,6 +245,11 @@ const Profile = ({ route }) => {
         return;
       }
 
+      if (!requestId || !fromUserId) {
+        Alert.alert('Error', 'Invalid request data');
+        return;
+      }
+
       // Update friend request status
       await firestore().collection('friend_requests').doc(requestId).update({
         status: 'accepted',
@@ -278,7 +291,7 @@ const Profile = ({ route }) => {
     } catch (error) {
       console.error('Error accepting friend request:', error);
       console.error('Error details:', error.message, error.code);
-      Alert.alert('Error', 'Failed to accept request: ' + (error.message || ''));
+      Alert.alert('Error', 'Failed to accept request: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -342,8 +355,8 @@ const Profile = ({ route }) => {
         }
         style={styles.profileImage}
       />
-      <Text style={styles.userName}>{user.name}</Text>
-      <Text style={styles.userEmail}>{user.email}</Text>
+      <Text style={[styles.userName, { color: darkMode ? '#fff' : '#333' }]}>{user.name}</Text>
+      <Text style={[styles.userEmail, { color: darkMode ? '#bbb' : '#666' }]}>{user.email}</Text>
       
       {isOwnProfile ? (
         <TouchableOpacity 
@@ -415,7 +428,7 @@ const Profile = ({ route }) => {
     >
       <View style={styles.menuItemLeft}>
         <Icon name={item.icon} size={24} color="#333" />
-        <Text style={styles.menuItemText}>{item.title}</Text>
+        <Text style={[styles.menuItemText, { color: darkMode ? '#fff' : '#333' }]}>{item.title}</Text>
       </View>
       <Icon name="chevron-right" size={24} color="#333" />
     </TouchableOpacity>
@@ -432,7 +445,7 @@ const Profile = ({ route }) => {
   if (error) {
     return (
       <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={[styles.errorText, { color: darkMode ? '#ff5252' : '#FF3B30' }]}>{error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => fetchUserData(true)}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
@@ -442,46 +455,42 @@ const Profile = ({ route }) => {
 
   return (
     <ScrollView 
-      style={styles.container}
+      style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#fff' }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={['#007AFF']}
-          tintColor="#007AFF"
+          colors={[darkMode ? '#fff' : '#007AFF']}
+          tintColor={darkMode ? '#fff' : '#007AFF'}
         />
       }
     >
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: darkMode ? '#333' : '#eee' }]}> 
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-left" size={24} color="#333" />
+          <Icon name="arrow-left" size={24} color={darkMode ? '#fff' : '#333'} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#333', textAlign: 'center' }]}>Profile</Text>
+        </View>
         <TouchableOpacity
           style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}
           onPress={() => navigation.navigate('SettingsScreen')}
         >
-          <Icon name="cog" size={28} color="#3949ab" />
+          <Icon name="cog" size={28} color={darkMode ? '#90caf9' : '#3949ab'} />
         </TouchableOpacity>
       </View>
-
       {user && renderProfileSection()}
-
-      {/* Menu Items - Only show for own profile */}
       {isOwnProfile && (
-        <View style={styles.menuContainer}>
+        <View style={[styles.menuContainer, { backgroundColor: darkMode ? '#232323' : '#fff' }]}> 
           {menuItems.map((item, index) => renderMenuItem({ item, index }))}
         </View>
       )}
-
-      {/* Logout Button - Only show for own profile */}
       {isOwnProfile && (
         <TouchableOpacity 
-          style={styles.logoutButton} 
+          style={[styles.logoutButton, { backgroundColor: darkMode ? '#ff5252' : '#FF3B30' }]} 
           onPress={handleLogout}>
-          <Icon name="sign-out" size={24} color="#FF3B30" />
-          <Text style={styles.logoutText}>Logout</Text>
+          <Icon name="sign-out" size={24} color="#fff" />
+          <Text style={[styles.logoutText, { color: '#fff' }]}>Logout</Text>
         </TouchableOpacity>
       )}
     </ScrollView>

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal, TextInput } from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ImageBackground, ScrollView, Image, Alert, ActivityIndicator, Modal, TextInput, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import { ThemeContext } from '../App';
 
-const Feed = () => {
+const Feed = ({ postCreationComponent }) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPost, setSelectedPost] = useState(null);
@@ -15,6 +16,7 @@ const Feed = () => {
   const [likedPosts, setLikedPosts] = useState({});
   const [friends, setFriends] = useState([]);
   let unsubscribePosts = null;
+  const { darkMode } = useContext(ThemeContext);
 
   useEffect(() => {
     setLoading(true);
@@ -153,6 +155,8 @@ const Feed = () => {
       }
 
       const postRef = firestore().collection('posts').doc(postId);
+      const postDoc = await postRef.get();
+      const postOwnerId = postDoc.data().userId;
       const newComment = {
         id: Date.now().toString(),
         userId: currentUser.uid,
@@ -165,6 +169,21 @@ const Feed = () => {
       await postRef.update({
         comments: firestore.FieldValue.arrayUnion(newComment)
       });
+
+      // Send notification to post owner (if not self)
+      if (postOwnerId && postOwnerId !== currentUser.uid) {
+        await firestore().collection('notifications').add({
+          userId: postOwnerId,
+          senderId: currentUser.uid,
+          senderName: currentUser.displayName || 'Anonymous',
+          senderPhotoURL: currentUser.photoURL || null,
+          type: 'comment',
+          message: `${currentUser.displayName || 'Someone'} commented on your post`,
+          postId: postId,
+          timestamp: firestore.FieldValue.serverTimestamp(),
+          read: false
+        });
+      }
 
       setCommentText('');
       setCommentModalVisible(false);
@@ -212,6 +231,7 @@ const Feed = () => {
       const postRef = firestore().collection('posts').doc(postId);
       const postDoc = await postRef.get();
       const data = postDoc.data();
+      const postOwnerId = data.userId;
       const likedBy = data.likedBy || [];
       const isLiked = likedBy.includes(currentUser.uid);
       if (isLiked) {
@@ -226,6 +246,20 @@ const Feed = () => {
           likedBy: firestore.FieldValue.arrayUnion(currentUser.uid)
         });
         setLikedPosts(prev => ({ ...prev, [postId]: true }));
+        // Send notification to post owner (if not self)
+        if (postOwnerId && postOwnerId !== currentUser.uid) {
+          await firestore().collection('notifications').add({
+            userId: postOwnerId,
+            senderId: currentUser.uid,
+            senderName: currentUser.displayName || 'Anonymous',
+            senderPhotoURL: currentUser.photoURL || null,
+            type: 'like',
+            message: `${currentUser.displayName || 'Someone'} liked your post`,
+            postId: postId,
+            timestamp: firestore.FieldValue.serverTimestamp(),
+            read: false
+          });
+        }
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to like/unlike post');
@@ -345,8 +379,9 @@ const Feed = () => {
             </ScrollView>
             <View style={styles.commentInputContainer}>
               <TextInput
-                style={styles.commentInput}
+                style={[styles.commentInput, { fontSize: 16, paddingVertical: 10, color: darkMode ? '#fff' : '#333' }]}
                 placeholder="Write a comment..."
+                placeholderTextColor={darkMode ? '#bbb' : '#666'}
                 value={commentText}
                 onChangeText={setCommentText}
                 multiline
@@ -364,82 +399,132 @@ const Feed = () => {
     );
   };
 
+  const renderHeader = () => (
+    <View style={{ paddingHorizontal: 0, paddingTop: 8 }}>
+      <View style={{
+        marginBottom: 12,
+        paddingHorizontal: 0,
+        paddingVertical: 0,
+        width: '100%',
+        alignSelf: 'center',
+      }}>
+        {postCreationComponent}
+      </View>
+      <View style={{ height: 1, backgroundColor: darkMode ? '#333' : '#eee', marginBottom: 8 }} />
+    </View>
+  );
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={[styles.feedContainer, { justifyContent: 'center', alignItems: 'center' }]}> 
+        <ActivityIndicator size="large" color={darkMode ? '#90caf9' : '#3949ab'} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.feedContainer}>
-      {renderPostMenu()}
-      {renderCommentModal()}
-      {posts.map(post => (
-        <View key={post.id} style={styles.feedItem}>
-          <View style={styles.feedHeader}>
-            <Image
-              source={
-                post.userProfilePicture
-                  ? { uri: post.userProfilePicture }
-                  : post.userGender === 'female'
-                  ? require('../Assets/images/female.jpg')
-                  : require('../Assets/images/male.jpg')
-              }
-              style={styles.feedUserImage}
-            />
-            <View style={styles.feedUserInfo}>
-              <Text style={styles.feedUserName}>{post.userName}</Text>
-              <Text style={styles.feedTime}>
-                {post.createdAt && typeof post.createdAt.toDate === 'function'
-                  ? new Date(post.createdAt.toDate()).toLocaleString()
-                  : 'Just now'}
-              </Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <View style={[styles.feedContainer, { backgroundColor: darkMode ? '#181818' : '#fff', flex: 1 }]}> 
+        {renderPostMenu()}
+        {renderCommentModal()}
+        <FlatList
+          data={posts}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <View
+              key={item.id}
+              style={{
+                backgroundColor: darkMode ? 'rgba(36,36,40,0.98)' : 'rgba(255,255,255,0.98)',
+                borderRadius: 20,
+                padding: 18,
+                marginVertical: 10,
+                shadowColor: darkMode ? '#000' : '#aaa',
+                shadowOpacity: 0.13,
+                shadowOffset: { width: 0, height: 4 },
+                shadowRadius: 12,
+                elevation: 5,
+                width: '100%',
+                alignSelf: 'center',
+              }}
+            >
+              <View style={[styles.feedHeader, { marginBottom: 6 }]}> 
+                <Image
+                  source={
+                    item.userProfilePicture
+                      ? { uri: item.userProfilePicture }
+                      : item.userGender === 'female'
+                      ? require('../Assets/images/female.jpg')
+                      : require('../Assets/images/male.jpg')
+                  }
+                  style={[styles.feedUserImage, { borderWidth: 1, borderColor: darkMode ? '#333' : '#eee' }]}
+                />
+                <View style={styles.feedUserInfo}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: darkMode ? '#fff' : '#232323' }}>{item.userName}</Text>
+                  <Text style={{ fontSize: 12, color: darkMode ? '#aaa' : '#888', marginTop: 1 }}>
+                    {item.createdAt && typeof item.createdAt.toDate === 'function'
+                      ? new Date(item.createdAt.toDate()).toLocaleString()
+                      : 'Just now'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.moreButton}
+                  onPress={() => {
+                    setSelectedPost(item);
+                    setMenuVisible(true);
+                  }}
+                >
+                  <Icon name="more-vert" size={22} color={darkMode ? '#bbb' : '#333'} />
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 17, color: darkMode ? '#f5f5f5' : '#232323', lineHeight: 24, marginBottom: 10, marginTop: 2, fontWeight: '500' }}>{item.content}</Text>
+              <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: darkMode ? '#292929' : '#f0f0f0', paddingTop: 10, marginTop: 4 }}>
+                <TouchableOpacity 
+                  style={[styles.feedActionButton, { marginRight: 22 }]}
+                  onPress={() => handleLikePost(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <Icon 
+                    name={likedPosts[item.id] ? "favorite" : "favorite-border"} 
+                    size={24} 
+                    color={likedPosts[item.id] ? "#e91e63" : darkMode ? "#bbb" : "#888"} 
+                  />
+                  <Text style={{ marginLeft: 6, color: likedPosts[item.id] ? '#e91e63' : (darkMode ? '#bbb' : '#888'), fontWeight: likedPosts[item.id] ? '700' : '500' }}>{item.likedBy.length}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.feedActionButton, { marginRight: 22 }]}
+                  onPress={() => {
+                    setCommentingPost(item);
+                    setCommentModalVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="comment" size={24} color={darkMode ? '#90caf9' : '#2196f3'} />
+                  <Text style={{ marginLeft: 6, color: darkMode ? '#90caf9' : '#2196f3', fontWeight: '500' }}>{item.comments.length}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.feedActionButton}
+                  onPress={() => handleSharePost(item)}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="share" size={22} color={darkMode ? '#bbb' : '#888'} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <TouchableOpacity 
-              style={styles.moreButton}
-              onPress={() => {
-                setSelectedPost(post);
-                setMenuVisible(true);
-              }}
-            >
-              <Icon name="more-vert" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.feedContent}>{post.content}</Text>
-          <View style={styles.feedActions}>
-            <TouchableOpacity 
-              style={styles.feedActionButton}
-              onPress={() => handleLikePost(post.id)}
-            >
-              <Icon 
-                name={likedPosts[post.id] ? "favorite" : "favorite-border"} 
-                size={24} 
-                color={likedPosts[post.id] ? "#d32f2f" : "#666"} 
-              />
-              <Text style={styles.feedActionText}>{post.likedBy.length}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.feedActionButton}
-              onPress={() => {
-                setCommentingPost(post);
-                setCommentModalVisible(true);
-              }}
-            >
-              <Icon name="comment" size={24} color="#666" />
-              <Text style={styles.feedActionText}>{post.comments.length}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.feedActionButton}
-              onPress={() => handleSharePost(post)}
-            >
-              <Icon name="share" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      ))}
-    </ScrollView>
+          )}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          ListEmptyComponent={<Text style={{ color: darkMode ? '#bbb' : '#666', textAlign: 'center', marginTop: 40 }}>No posts yet</Text>}
+          ItemSeparatorComponent={() => (
+            <View style={{ height: 1, backgroundColor: darkMode ? '#333' : '#eee', marginVertical: 10, width: '100%' }} />
+          )}
+          ListHeaderComponent={renderHeader}
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 

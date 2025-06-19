@@ -1,366 +1,327 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, FlatList, SafeAreaView } from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, FlatList, SafeAreaView, Modal, TextInput, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const JOINED_GROUPS_KEY = '@focushub_joined_groups';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import * as ImagePicker from 'react-native-image-picker';
+import storage from '@react-native-firebase/storage';
+import { ThemeContext } from '../App';
 
 const Explore = () => {
   const navigation = useNavigation();
-  const [joinedGroups, setJoinedGroups] = useState(new Set());
-  const [isLoading, setIsLoading] = useState(true);
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupImage, setGroupImage] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [myGroups, setMyGroups] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [step, setStep] = useState(1);
+  const [friends, setFriends] = useState([]);
+  const [selectedFriends, setSelectedFriends] = useState([]);
+  const [search, setSearch] = useState('');
+  const { darkMode } = useContext(ThemeContext);
 
-  // Load joined groups from AsyncStorage on mount
+  // Fetch all groups from Firestore
+  const fetchGroups = async () => {
+    setLoading(true);
+    try {
+      const snapshot = await firestore().collection('groups').get();
+      const groupList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setGroups(groupList);
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+    }
+  };
+
+  // Fetch groups user is a member of
+  const fetchMyGroups = async () => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    const snapshot = await firestore().collection('groups').where('members', 'array-contains', currentUser.uid).get();
+    setMyGroups(snapshot.docs.map(doc => doc.id));
+  };
+
+  // Fetch friends for group creation
+  const fetchFriends = async () => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    const friendsSnapshot = await firestore()
+      .collection('users')
+      .doc(currentUser.uid)
+      .collection('friends')
+      .get();
+    const friendIds = friendsSnapshot.docs.map(doc => doc.id);
+    let friendsData = [];
+    const batchSize = 10;
+    for (let i = 0; i < friendIds.length; i += batchSize) {
+      const batchIds = friendIds.slice(i, i + batchSize);
+      const usersSnapshot = await firestore()
+        .collection('users')
+        .where(firestore.FieldPath.documentId(), 'in', batchIds)
+        .get();
+      friendsData = friendsData.concat(usersSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.username || data.name || data.displayName || 'Anonymous User',
+          profilePicture: data.profilePicture || data.photoURL || null,
+          email: data.email || '',
+        };
+      }));
+    }
+    setFriends(friendsData);
+  };
+
   useEffect(() => {
-    const loadJoinedGroups = async () => {
-      try {
-        const storedGroups = await AsyncStorage.getItem(JOINED_GROUPS_KEY);
-        if (storedGroups) {
-          setJoinedGroups(new Set(JSON.parse(storedGroups)));
-        }
-      } catch (error) {
-        console.error('Error loading joined groups:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadJoinedGroups();
+    fetchGroups();
+    fetchMyGroups();
   }, []);
 
-  // Save joined groups to AsyncStorage whenever they change
+  // When modal opens, fetch friends
   useEffect(() => {
-    const saveJoinedGroups = async () => {
-      try {
-        await AsyncStorage.setItem(JOINED_GROUPS_KEY, JSON.stringify([...joinedGroups]));
-      } catch (error) {
-        console.error('Error saving joined groups:', error);
-      }
-    };
-
-    if (!isLoading) {
-      saveJoinedGroups();
+    if (createModalVisible) {
+      setStep(1);
+      setGroupName('');
+      setGroupImage(null);
+      setSelectedFriends([]);
+      setSearch('');
+      fetchFriends();
     }
-  }, [joinedGroups, isLoading]);
+  }, [createModalVisible]);
 
-  const handleGroupPress = (groupId, groupName) => {
-    navigation.navigate('ChatScreen', { groupId, groupName });
-  };
-
-  const handleJoinPress = async (groupId) => {
-    if (joinedGroups.has(groupId)) {
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || selectedFriends.length === 0) {
+      Alert.alert('Error', 'Group name and at least one member required');
       return;
     }
-    setJoinedGroups(prev => new Set([...prev, groupId]));
+    setCreating(true);
+    try {
+      const currentUser = auth().currentUser;
+      if (!currentUser) throw new Error('Not logged in');
+      let imageUrl = null;
+      if (groupImage) {
+        // Upload image to Firebase Storage
+        const filename = `group_images/${currentUser.uid}_${Date.now()}`;
+        const ref = storage().ref(filename);
+        await ref.putFile(groupImage);
+        imageUrl = await ref.getDownloadURL();
+      }
+      const members = [currentUser.uid, ...selectedFriends.map(f => f.id)];
+      await firestore().collection('groups').add({
+        name: groupName.trim(),
+        image: imageUrl,
+        members,
+        createdBy: currentUser.uid,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+      });
+      setCreateModalVisible(false);
+      fetchGroups();
+      fetchMyGroups();
+      Alert.alert('Success', 'Group created!');
+    } catch (error) {
+      console.error('Group creation error:', error, JSON.stringify(error));
+      Alert.alert('Error', 'Failed to create group: ' + (error.message || JSON.stringify(error)));
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const studyGroups = [
-    {
-      id: '1',
-      name: 'Computer Science',
-      members: 156,
-      image: require('../Assets/images/group.jpeg'),
-      description: 'Study group for CS students'
-    },
-    {
-      id: '2',
-      name: 'Mathematics',
-      members: 89,
-      image: require('../Assets/images/group.jpeg'),
-      description: 'Advanced mathematics discussion'
-    },
-    {
-      id: '3',
-      name: 'Physics',
-      members: 120,
-      image: require('../Assets/images/group.jpeg'),
-      description: 'Physics study group'
-    },
-    {
-      id: '4',
-      name: 'Chemistry',
-      members: 95,
-      image: require('../Assets/images/group.jpeg'),
-      description: 'Chemistry enthusiasts'
-    }
-  ];
+  const handlePickImage = () => {
+    ImagePicker.launchImageLibrary({ mediaType: 'photo' }, (response) => {
+      if (response.didCancel) return;
+      if (response.assets && response.assets.length > 0) {
+        setGroupImage(response.assets[0].uri);
+      }
+    });
+  };
 
-  const renderGroupItem = ({ item }) => (
-    <View style={styles.groupCard}>
-      <Image source={item.image} style={styles.groupImage} />
-      <View style={styles.groupInfo}>
-        <Text style={styles.groupName}>{item.name}</Text>
-        <Text style={styles.groupDescription}>{item.description}</Text>
-        <View style={styles.groupStats}>
-          <Icon name="users" size={16} color="#666" />
-          <Text style={styles.memberCount}>{item.members} members</Text>
-        </View>
-      </View>
-      <TouchableOpacity 
-        style={[styles.joinButton, joinedGroups.has(item.id) && styles.joinButtonRequested]}
-        onPress={() => handleJoinPress(item.id)}
-      >
-        <Text style={[styles.joinButtonText, joinedGroups.has(item.id) && styles.joinButtonTextRequested]}>
-          {joinedGroups.has(item.id) ? 'Requested' : 'Join'}
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity 
-        onPress={() => handleGroupPress(item.id, item.name)}
-      >
-        {/* ...rest of the group card... */}
-      </TouchableOpacity>
-    </View>
-  );
+  const handleJoinGroup = async (groupId) => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    await firestore().collection('groups').doc(groupId).update({
+      members: firestore.FieldValue.arrayUnion(currentUser.uid)
+    });
+    fetchGroups();
+    fetchMyGroups();
+  };
 
-  if (isLoading) {
+  const handleLeaveGroup = async (groupId) => {
+    const currentUser = auth().currentUser;
+    if (!currentUser) return;
+    await firestore().collection('groups').doc(groupId).update({
+      members: firestore.FieldValue.arrayRemove(currentUser.uid)
+    });
+    fetchGroups();
+    fetchMyGroups();
+  };
+
+  const handleGroupPress = (group) => {
+    navigation.navigate('GroupChatScreen', { groupId: group.id, groupName: group.name, groupImage: group.image });
+  };
+
+  const renderGroupItem = ({ item }) => {
+    const isMember = myGroups.includes(item.id);
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text>Loading...</Text>
-        </View>
-      </SafeAreaView>
+      <View style={[styles.groupCard, { backgroundColor: darkMode ? '#232323' : '#fff' }]}>
+        <TouchableOpacity onPress={() => handleGroupPress(item)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+          <Image source={item.image ? { uri: item.image } : require('../Assets/images/group.jpeg')} style={styles.groupImage} />
+          <View style={styles.groupInfo}>
+            <Text style={[styles.groupName, { color: darkMode ? '#fff' : '#333' }]}>{item.name}</Text>
+            <Text style={[styles.groupMembers, { color: darkMode ? '#bbb' : '#666' }]}>{item.members?.length || 0} members</Text>
+          </View>
+        </TouchableOpacity>
+        {isMember ? (
+          <TouchableOpacity style={[styles.leaveButton, { backgroundColor: darkMode ? '#3949ab' : '#FF3B30' }]} onPress={() => handleLeaveGroup(item.id)}>
+            <Text style={[styles.leaveButtonText, { color: darkMode ? '#fff' : '#fff' }]}>Leave</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.joinButton, { backgroundColor: darkMode ? '#3949ab' : '#007AFF' }]} onPress={() => handleJoinGroup(item.id)}>
+            <Text style={[styles.joinButtonText, { color: darkMode ? '#fff' : '#fff' }]}>Join</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
-  }
+  };
+
+  // Friend picker for group creation
+  const filteredFriends = friends.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
+  const toggleSelectFriend = (friend) => {
+    if (selectedFriends.some(f => f.id === friend.id)) {
+      setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
+    } else {
+      setSelectedFriends([...selectedFriends, friend]);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Icon name="arrow-left" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Explore</Text>
-          <TouchableOpacity style={styles.searchButton}>
-            <Icon name="search" size={24} color="#333" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Stats Section */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>12</Text>
-            <Text style={styles.statLabel}>Study Hours</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: darkMode ? '#181818' : '#f5f5f5' }]}>
+      {/* Modern header */}
+      <View style={[styles.modernHeader, { backgroundColor: darkMode ? '#232323' : '#3949ab' }]}>
+        <Icon name="users" size={32} color={darkMode ? '#fff' : '#fff'} style={{ marginRight: 12 }} />
+        <Text style={[styles.modernHeaderTitle, { color: darkMode ? '#fff' : '#fff' }]}>Explore Groups</Text>
+        <TouchableOpacity style={styles.createButtonModern} onPress={() => setCreateModalVisible(true)}>
+          <Icon name="plus" size={20} color={darkMode ? '#fff' : '#fff'} />
+        </TouchableOpacity>
+      </View>
+      <FlatList
+        data={groups}
+        renderItem={renderGroupItem}
+        keyExtractor={item => item.id}
+        refreshing={refreshing}
+        onRefresh={() => { setRefreshing(true); fetchGroups(); fetchMyGroups(); setRefreshing(false); }}
+        contentContainerStyle={styles.groupsList}
+        ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 40, color: darkMode ? '#bbb' : '#666' }}>No groups found.</Text>}
+      />
+      {/* Create Group Modal */}
+      <Modal visible={createModalVisible} animationType="slide" transparent onRequestClose={() => setCreateModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {step === 1 ? (
+              <>
+                <Text style={styles.modalTitle}>Create Group</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Group Name"
+                  value={groupName}
+                  onChangeText={setGroupName}
+                />
+                <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage}>
+                  <Icon name="image" size={24} color={darkMode ? '#fff' : '#007AFF'} />
+                  <Text style={[styles.imagePickerText, { color: darkMode ? '#fff' : '#007AFF' }]}>{groupImage ? 'Change Image' : 'Pick Group Image'}</Text>
+                </TouchableOpacity>
+                {groupImage && <Image source={{ uri: groupImage }} style={styles.previewImage} />}
+                <TouchableOpacity style={styles.nextButton} onPress={() => setStep(2)}>
+                  <Text style={[styles.nextButtonText, { color: darkMode ? '#fff' : '#fff' }]}>Next</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cancelButton} onPress={() => setCreateModalVisible(false)}>
+                  <Text style={[styles.cancelButtonText, { color: darkMode ? '#fff' : '#3949ab' }]}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Add Members</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Search friends..."
+                  value={search}
+                  onChangeText={setSearch}
+                />
+                <ScrollView style={{ maxHeight: 200 }}>
+                  {filteredFriends.map(friend => (
+                    <TouchableOpacity key={friend.id} style={[styles.friendItem, { backgroundColor: darkMode ? '#232323' : '#fff' }]} onPress={() => toggleSelectFriend(friend)}>
+                      <Image source={friend.profilePicture ? { uri: friend.profilePicture } : require('../Assets/images/male.jpg')} style={[styles.friendAvatar, { backgroundColor: darkMode ? '#232323' : '#eee' }]} />
+                      <Text style={[styles.friendName, { color: darkMode ? '#fff' : '#333' }]}>{friend.name}</Text>
+                      {selectedFriends.some(f => f.id === friend.id) && <Icon name="check" size={20} color={darkMode ? '#fff' : '#007AFF'} style={{ marginLeft: 'auto' }} />}
+                    </TouchableOpacity>
+                  ))}
+                  {filteredFriends.length === 0 && <Text style={[styles.friendName, { color: darkMode ? '#bbb' : '#666', textAlign: 'center', marginTop: 20 }]}>No friends found.</Text>}
+                </ScrollView>
+                <TouchableOpacity style={[styles.createButton, { opacity: (!groupName.trim() || selectedFriends.length === 0 || creating) ? 0.5 : 1, backgroundColor: darkMode ? '#3949ab' : '#007AFF' }]} onPress={handleCreateGroup} disabled={!groupName.trim() || selectedFriends.length === 0 || creating}>
+                  {creating ? <ActivityIndicator color={darkMode ? '#fff' : '#fff'} /> : <Text style={[styles.createButtonText, { color: darkMode ? '#fff' : '#fff' }]}>Create</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cancelButton} onPress={() => setCreateModalVisible(false)}>
+                  <Text style={[styles.cancelButtonText, { color: darkMode ? '#fff' : '#3949ab' }]}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>5</Text>
-            <Text style={styles.statLabel}>Completed Tasks</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>3</Text>
-            <Text style={styles.statLabel}>Active Goals</Text>
-          </View>
         </View>
-
-        {/* Categories Section - My Groups */}
-        <View style={styles.categoriesContainer}>
-          <Text style={styles.sectionTitle}>My Groups</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
-            <TouchableOpacity 
-              style={styles.categoryButton}
-              onPress={() => handleGroupPress('1', 'Computer Science')}
-            >
-              <Icon name="laptop" size={24} color="#007AFF" />
-              <Text style={styles.categoryText}>Computer Science</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.categoryButton}
-              onPress={() => handleGroupPress('2', 'Mathematics')}
-            >
-              <Icon name="calculator" size={24} color="#007AFF" />
-              <Text style={styles.categoryText}>Mathematics</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.categoryButton}
-              onPress={() => handleGroupPress('3', 'Physics')}
-            >
-              <Icon name="flask" size={24} color="#007AFF" />
-              <Text style={styles.categoryText}>Science</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.categoryButton}
-              onPress={() => handleGroupPress('4', 'Literature')}
-            >
-              <Icon name="book" size={24} color="#007AFF" />
-              <Text style={styles.categoryText}>Literature</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
-
-        {/* Study Groups Section */}
-        <View style={styles.groupsContainer}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Popular Study Groups</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={studyGroups}
-            renderItem={renderGroupItem}
-            keyExtractor={item => item.id}
-            scrollEnabled={false}
-          />
-        </View>
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  searchButton: {
-    padding: 8,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    backgroundColor: '#f8f8f8',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: '#ddd',
-  },
-  categoriesContainer: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 12,
-  },
-  categoriesScroll: {
-    flexDirection: 'row',
-  },
-  categoryButton: {
-    alignItems: 'center',
-    marginRight: 16,
-    padding: 12,
-    backgroundColor: '#f0f8ff',
-    borderRadius: 12,
-    minWidth: 100,
-  },
-  categoryText: {
-    marginTop: 8,
-    color: '#333',
-    fontSize: 14,
-  },
-  groupsContainer: {
-    padding: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  seeAllText: {
-    color: '#007AFF',
-    fontSize: 16,
-  },
-  groupCard: {
-    flexDirection: 'row',
-    padding: 12,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  groupImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
-  groupInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  groupName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  groupDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  groupStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  memberCount: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 4,
-  },
-  joinButton: {
+  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  modernHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#3949ab', padding: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, elevation: 4 },
+  modernHeaderTitle: { color: '#fff', fontSize: 26, fontWeight: 'bold', flex: 1 },
+  createButtonModern: { backgroundColor: '#007AFF', padding: 10, borderRadius: 20, marginLeft: 12 },
+  groupsList: { padding: 16 },
+  groupCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 18, elevation: 3, shadowColor: '#000', shadowOpacity: 0.07, shadowOffset: { width: 0, height: 2 }, shadowRadius: 6 },
+  groupImage: { width: 60, height: 60, borderRadius: 30, marginRight: 16, backgroundColor: '#eee' },
+  groupInfo: { flex: 1 },
+  groupName: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  groupMembers: { fontSize: 14, color: '#666', marginTop: 4 },
+  joinButton: { backgroundColor: '#007AFF', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
+  joinButtonText: { color: '#fff', fontWeight: 'bold' },
+  leaveButton: { backgroundColor: '#FF3B30', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8 },
+  leaveButtonText: { color: '#fff', fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '90%' },
+  modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 16, color: '#3949ab', textAlign: 'center' },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginBottom: 16, fontSize: 16 },
+  imagePicker: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  imagePickerText: { color: '#007AFF', marginLeft: 8, fontSize: 16 },
+  previewImage: { width: 80, height: 80, borderRadius: 40, alignSelf: 'center', marginBottom: 16 },
+  nextButton: { backgroundColor: '#007AFF', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 8 },
+  nextButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  friendItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  friendAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 12, backgroundColor: '#eee' },
+  friendName: { fontSize: 16, color: '#333' },
+  cancelButton: { marginTop: 12, alignItems: 'center' },
+  cancelButtonText: { color: '#3949ab', fontWeight: 'bold', fontSize: 16 },
+  createButton: {
     backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+    shadowColor: '#007AFF',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
   },
-  joinButtonRequested: {
-    backgroundColor: '#E0E0E0',
-  },
-  joinButtonText: {
+  createButtonText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  joinButtonTextRequested: {
-    color: '#666',
+    fontWeight: 'bold',
+    fontSize: 18,
+    letterSpacing: 1,
   },
 });
 
